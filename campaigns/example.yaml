@@ -1,0 +1,32 @@
+# LeadScout campaign. Copy it, edit it, then run: leadscout run -c campaigns/your-campaign.yaml
+name: lahore-cafes-web            # unique name; leads are grouped by it
+location: "Gulberg, Lahore, Pakistan"  # any place name OpenStreetMap understands
+country_code: "92"                # phone country code (no +), used for WhatsApp links
+radius_km: 4
+categories: [cafe, restaurant, bakery]   # see README for the list, or raw OSM tags like shop=tailor
+source: overpass                  # overpass (free) | google_places (needs GOOGLE_PLACES_API_KEY)
+
+# What you sell decides which problems make a business a good lead:
+# web_design | seo | booking_system | social_media | reputation | maintenance | general_marketing
+service: web_design
+service_pitch: "I build fast, mobile-friendly websites with online menus and WhatsApp ordering for local restaurants."
+language: English                 # e.g. English, Urdu, Roman Urdu, Arabic, Spanish (non-English needs an LLM)
+min_score: 40                     # only leads at/above this score get outreach drafts
+
+llm: auto                         # auto | gemini | groq | ollama | claude | template (no AI, free)
+auto_send: false                  # true = skip the review step (not recommended)
+pagespeed: false                  # true = Google PageSpeed check (slower; set PAGESPEED_API_KEY)
+
+sender:
+  name: "Your Name"
+  company: "Your Agency"
+  email: "you@example.com"
+  phone: "+92 300 0000000"
+  website: "https://youragency.com"
+  address: "Office 1, Main Boulevard, Gulberg, Lahore, Pakistan"   # required by anti-spam laws
+
+limits:
+  daily_emails: 30                # keep it low on a new mailbox to protect deliverability
+  min_delay_seconds: 45
+  max_delay_seconds: 120
+  followup_days: [3, 7]           # follow-up 1 after 3 days, follow-up 2 after 7 days
