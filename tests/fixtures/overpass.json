@@ -1,0 +1,7 @@
+{"elements": [
+  {"type": "node", "id": 1, "lat": 31.51, "lon": 74.35,
+   "tags": {"amenity": "cafe", "name": "Chai Corner", "phone": "0300 1234567", "addr:street": "MM Alam Road", "addr:city": "Lahore"}},
+  {"type": "way", "id": 2, "center": {"lat": 31.52, "lon": 74.36},
+   "tags": {"amenity": "cafe", "name": "Bean There", "website": "beanthere.pk", "contact:instagram": "https://instagram.com/beanthere"}},
+  {"type": "node", "id": 3, "lat": 31.5, "lon": 74.3, "tags": {"amenity": "cafe"}}
+]}
