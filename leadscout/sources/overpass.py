@@ -115,8 +115,9 @@ def parse_elements(data: dict[str, Any], category: str) -> list[dict[str, Any]]:
     return out
 
 
-def discover(location: str, categories: list[str], radius_km: float) -> list[dict[str, Any]]:
-    lat, lon = geocode(location)
+def discover(location: str, categories: list[str], radius_km: float,
+             center: tuple[float, float] | None = None) -> list[dict[str, Any]]:
+    lat, lon = center or geocode(location)
     results: list[dict[str, Any]] = []
     with client(timeout=120) as c:
         for cat in categories:
