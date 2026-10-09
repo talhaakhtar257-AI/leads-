@@ -64,7 +64,7 @@ def geocode(location: str) -> tuple[float, float]:
 
 def build_query(category: str, lat: float, lon: float, radius_m: int) -> str:
     parts = "".join(f"nwr[{f}][\"name\"](around:{radius_m},{lat},{lon});" for f in tag_filters(category))
-    return f"[out:json][timeout:90];({parts});out center tags;"
+    return f"[out:json][timeout:90];({parts});out center tags meta;"
 
 
 def _first(tags: dict[str, str], *keys: str) -> str | None:
@@ -105,6 +105,12 @@ def parse_elements(data: dict[str, Any], category: str) -> list[dict[str, Any]]:
             "lon": lon,
             "opening_hours": tags.get("opening_hours"),
             "socials": socials,
+            "meta": {k: v for k, v in {
+                "osm_version": el.get("version"),
+                "osm_timestamp": el.get("timestamp"),
+                "start_date": tags.get("start_date"),
+                "opening_date": tags.get("opening_date"),
+            }.items() if v is not None},
         })
     return out
 

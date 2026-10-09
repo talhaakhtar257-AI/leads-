@@ -106,3 +106,12 @@ def test_background_job_runs_and_logs(site):
     assert job["status"] == "done"
     assert any("Scored" in line for line in job["lines"])
     assert client.post("/jobs/nope").status_code == 404
+
+
+def test_new_business_filter(site):
+    client, d, bid = site
+    other = d.insert_business("webtest", {"name": "Fresh Bakery", "phone": "0300 7654321"})
+    d.update_business(other, signals=["new_business", "no_website"], score=70, status="audited", audited_at=now())
+    page = client.get("/leads?new=1").text
+    assert "Fresh Bakery" in page and "Chai Corner" not in page
+    assert 'class="chip new"' in page

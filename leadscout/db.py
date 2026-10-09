@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS businesses (
     review_count INTEGER,
     opening_hours TEXT,
     socials TEXT DEFAULT '{}',
+    meta TEXT DEFAULT '{}',      -- source extras: osm_version, osm_timestamp, start_date, sources...
     signals TEXT DEFAULT '[]',
     audit TEXT DEFAULT '{}',
     score INTEGER,
@@ -61,7 +62,13 @@ CREATE TABLE IF NOT EXISTS suppression (
 );
 """
 
-JSON_FIELDS = ("socials", "signals", "audit")
+JSON_FIELDS = ("socials", "signals", "audit", "meta")
+
+# Columns added after the first release: (name, definition). Applied to older databases on open.
+MIGRATIONS = [("meta", "TEXT DEFAULT '{}'")]
+
+# Fields a second source may fill in when the first one left them empty.
+MERGE_FIELDS = ("phone", "website", "email", "address", "rating", "review_count", "opening_hours", "lat", "lon")
 
 # Many businesses share these hosts, so a matching domain doesn't mean the same business.
 SHARED_HOSTS = ("facebook.com", "fb.com", "instagram.com", "linktr.ee", "tiktok.com", "google.com",
@@ -101,6 +108,14 @@ class DB:
         self.conn = sqlite3.connect(str(path))
         self.conn.row_factory = sqlite3.Row
         self.conn.executescript(SCHEMA)
+        self._migrate()
+
+    def _migrate(self) -> None:
+        cols = {r["name"] for r in self.conn.execute("PRAGMA table_info(businesses)")}
+        for name, definition in MIGRATIONS:
+            if name not in cols:
+                self.conn.execute(f"ALTER TABLE businesses ADD COLUMN {name} {definition}")
+        self.conn.commit()
 
     # ---------- businesses ----------
     def find_duplicate(self, biz: dict[str, Any]) -> int | None:
@@ -139,6 +154,7 @@ class DB:
             "review_count": biz.get("review_count"),
             "opening_hours": biz.get("opening_hours"),
             "socials": json.dumps(biz.get("socials") or {}),
+            "meta": json.dumps({**(biz.get("meta") or {}), "sources": [biz.get("source")] if biz.get("source") else []}),
             "phone_key": phone_key(biz.get("phone")),
             "name_key": name_key(biz["name"], biz.get("address")),
             "created_at": now(),
@@ -148,6 +164,41 @@ class DB:
         cur = self.conn.execute(f"INSERT INTO businesses ({cols}) VALUES ({marks})", tuple(row.values()))
         self.conn.commit()
         return cur.lastrowid
+
+    def upsert_business(self, campaign: str, biz: dict[str, Any]) -> tuple[int, str]:
+        """Insert a new business, or fill gaps in the existing one when another source finds it again.
+
+        Returns (id, "new" | "merged" | "duplicate").
+        """
+        existing_id = self.find_duplicate(biz)
+        if existing_id is None:
+            return self.insert_business(campaign, biz), "new"
+        return existing_id, ("merged" if self.merge_business(existing_id, biz) else "duplicate")
+
+    def merge_business(self, biz_id: int, biz: dict[str, Any]) -> bool:
+        """Fill empty fields of an existing lead from another source. Returns True if anything changed."""
+        cur = self.business(biz_id)
+        fields: dict[str, Any] = {k: biz[k] for k in MERGE_FIELDS if cur.get(k) in (None, "") and biz.get(k) not in (None, "")}
+        socials = {**(biz.get("socials") or {}), **cur["socials"]}
+        if socials != cur["socials"]:
+            fields["socials"] = socials
+        meta = dict(cur["meta"])
+        for k, v in (biz.get("meta") or {}).items():
+            meta.setdefault(k, v)
+        sources = list(meta.get("sources") or ([cur["source"]] if cur.get("source") else []))
+        if biz.get("source") and biz["source"] not in sources:
+            sources.append(biz["source"])
+        meta["sources"] = sources
+        changed = bool(fields) or meta != cur["meta"]
+        if meta != cur["meta"]:
+            fields["meta"] = meta
+        if "website" in fields:
+            fields["audited_at"] = None  # a newly found website needs auditing
+        if "phone" in fields:
+            fields["phone_key"] = phone_key(fields["phone"])
+        if fields:
+            self.update_business(biz_id, **fields)
+        return changed
 
     def update_business(self, biz_id: int, **fields: Any) -> None:
         for f in JSON_FIELDS:

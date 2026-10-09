@@ -94,19 +94,21 @@ def create_app(campaign_path: str = "campaign.yaml", db_path: str = "leads.db", 
         return page(request, "dashboard.html", stats=stats, review_count=queue, whatsapp_count=wa)
 
     @app.get("/leads", response_class=HTMLResponse)
-    def leads(request: Request, min_score: int = 0, status: str = "", q: str = ""):
+    def leads(request: Request, min_score: int = 0, status: str = "", q: str = "", new: int = 0):
         c = require_campaign(request)
         where, params = ["COALESCE(score, 0) >= ?"], [min_score]
         if status in STATUSES:
             where.append("status = ?")
             params.append(status)
+        if new:
+            where.append("signals LIKE '%\"new_business\"%'")
         if q:
             where.append("(name LIKE ? OR address LIKE ? OR category LIKE ?)")
             params += [f"%{q}%"] * 3
         rows = db().businesses(c.name, " AND ".join(where), params)
         points = [{"id": b["id"], "name": b["name"], "score": b["score"], "lat": b["lat"], "lon": b["lon"]}
                   for b in rows if b["lat"] is not None and b["lon"] is not None]
-        return page(request, "leads.html", leads=rows, points=points, min_score=min_score, status=status, q=q)
+        return page(request, "leads.html", leads=rows, points=points, min_score=min_score, status=status, q=q, new=new)
 
     @app.get("/leads/{lead_id}", response_class=HTMLResponse)
     def lead(request: Request, lead_id: int):

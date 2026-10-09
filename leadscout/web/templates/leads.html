@@ -18,6 +18,7 @@
   <select name="min_score">
     {% for v in (0, 20, 40, 60, 80) %}<option value="{{ v }}" {{ 'selected' if v == min_score }}>Score ≥ {{ v }}</option>{% endfor %}
   </select>
+  <label class="check"><input type="checkbox" name="new" value="1" {{ 'checked' if new }}> New businesses only</label>
   <button type="submit">Filter</button>
 </form>
 
@@ -32,7 +33,7 @@
   {% set s = b.score if b.score is not none else -1 %}
   <tr>
     <td><span class="score {{ 'hot' if s >= 60 else 'warm' if s >= 40 else 'cold' }}">{{ b.score if b.score is not none else '–' }}</span></td>
-    <td><a href="/leads/{{ b.id }}"><strong>{{ b.name }}</strong></a><div class="muted small">{{ (b.category or '') | replace('_', ' ') }}{% if b.address %} · {{ b.address }}{% endif %}</div></td>
+    <td><a href="/leads/{{ b.id }}"><strong>{{ b.name }}</strong></a>{% if 'new_business' in b.signals %} <span class="chip new">New</span>{% endif %}<div class="muted small">{{ (b.category or '') | replace('_', ' ') }}{% if b.address %} · {{ b.address }}{% endif %}</div></td>
     <td class="hide-sm">{% for sig in b.signals %}<span class="chip">{{ SIGNALS[sig].title if sig in SIGNALS else sig }}</span>{% endfor %}</td>
     <td class="small">{% if b.email %}{{ b.email }}<br>{% endif %}{{ b.phone or '' }}</td>
     <td><span class="status {{ b.status }}">{{ b.status }}</span></td>

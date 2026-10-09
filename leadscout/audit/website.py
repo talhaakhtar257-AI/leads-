@@ -13,6 +13,7 @@ from ..db import domain_of
 from ..enrich.contacts import best_email, extract_contacts
 from ..http import client
 from . import pagespeed
+from .newness import newness_evidence
 
 SOCIAL_HOSTS = ("facebook.com", "instagram.com", "fb.com", "linktr.ee", "tiktok.com")
 FREE_SUBDOMAINS = ("wixsite.com", "blogspot.com", "wordpress.com", "weebly.com", "business.site",
@@ -70,7 +71,12 @@ def audit_business(biz: dict[str, Any], use_pagespeed: bool = False) -> dict[str
     details: dict[str, Any] = {}
     contacts = {"emails": [biz["email"]] if biz.get("email") else [], "phones": [], "socials": dict(biz.get("socials") or {})}
 
-    # Reputation signals (only available from Google Places).
+    evidence = newness_evidence(biz)
+    if evidence:
+        signals.append("new_business")
+        details["new_business"] = evidence
+
+    # Reputation signals (only available from Google Places / Yelp).
     if biz.get("rating") is not None and biz["rating"] < 4.0:
         signals.append("low_rating")
     if biz.get("review_count") is not None and biz["review_count"] < 20:
