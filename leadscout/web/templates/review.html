@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Review · LeadScout{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Review drafts</h1><div class="muted">Nothing is sent until you approve it. Edits are saved when you approve.</div></div>
+</div>
+{% for it in items %}
+{% set m = it.m %}{% set b = it.b %}
+<section class="card draft">
+  <div class="draft-head">
+    <div>
+      <a href="/leads/{{ b.id }}"><strong>{{ b.name }}</strong></a>
+      <span class="score {{ 'hot' if (b.score or 0) >= 60 else 'warm' if (b.score or 0) >= 40 else 'cold' }}">{{ b.score }}</span>
+      <span class="chip">{{ 'Email to ' ~ b.email if m.channel == 'email' else 'WhatsApp to ' ~ (b.phone or '') }}</span>
+    </div>
+    <a class="small" href="/audits/{{ b.id }}" target="_blank" rel="noopener">1-page audit</a>
+  </div>
+  <p class="muted small">{{ b.reason or '' }}</p>
+  <form method="post" action="/messages/{{ m.id }}">
+    {% if m.channel == 'email' %}<label>Subject</label><input name="subject" value="{{ m.subject or '' }}" style="width:100%">{% endif %}
+    <label>Message</label>
+    <textarea name="body" rows="8">{{ m.body }}</textarea>
+    {% for f in it.followups %}<div class="followup">Follow-up {{ f.step }}: {{ f.body }}</div>{% endfor %}
+    <div class="row" style="margin-top:8px">
+      <button class="primary" name="action" value="approve">Approve</button>
+      <button name="action" value="skip">Skip</button>
+    </div>
+  </form>
+</section>
+{% else %}
+<div class="card empty">No drafts waiting. Run the agent from the <a href="/">Dashboard</a> to create more.</div>
+{% endfor %}
+{% endblock %}

@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}WhatsApp · LeadScout{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>WhatsApp queue</h1><div class="muted">Open each chat, press send in WhatsApp, then mark it as sent here. Sending stays manual, which keeps your number safe.</div></div>
+</div>
+{% for m in messages %}
+<section class="card draft">
+  <div class="draft-head">
+    <a href="/leads/{{ m.business_id }}"><strong>{{ m.business_name }}</strong></a>
+    <span class="muted small">{{ m.business_phone }}</span>
+  </div>
+  <div style="white-space:pre-wrap">{{ m.body }}</div>
+  <form class="row" method="post" action="/messages/{{ m.id }}" style="margin-top:10px">
+    {% if m.wa_link %}<a class="btn primary" href="{{ m.wa_link }}" target="_blank" rel="noopener">Open in WhatsApp</a>
+    {% else %}<span class="notice error small">Can't build a WhatsApp link from this phone number. Set <code>country_code</code> in Settings.</span>{% endif %}
+    <button name="action" value="whatsapp_sent">Mark as sent</button>
+  </form>
+</section>
+{% else %}
+<div class="card empty">No approved WhatsApp messages. Approve some in <a href="/review">Review</a>.</div>
+{% endfor %}
+{% endblock %}

@@ -43,6 +43,24 @@ leadscout whatsapp        # open WhatsApp links and send them by hand
 
 Run `leadscout check-replies` and `leadscout send` once a day, for example with cron: `0 10 * * * cd /path/to/leads- && .venv/bin/leadscout check-replies && .venv/bin/leadscout send`.
 
+## Web dashboard
+
+Prefer clicking to typing? Start the dashboard:
+
+```bash
+pip install -e ".[web]"
+leadscout web             # opens on http://localhost:8000
+```
+
+- **Dashboard:** run any step with one click and watch the live log, plus lead counts, the most common problems in the area, and the pipeline from new to won.
+- **Leads:** search and filter, see every lead on a map colored by score, and download a CSV.
+- **Lead page:** why it's a good lead, the evidence, contacts, the 1-page audit, and status updates (replied, won, lost, unsubscribed).
+- **Review:** edit, approve or skip drafts. Follow-ups are approved together with the first message.
+- **WhatsApp:** open each chat with the message already filled in, then mark it as sent.
+- **Settings:** edit the campaign; it's checked before saving. Switch between campaign files from the top bar.
+
+The dashboard has no login and listens only on your own computer by default. Only use `--host 0.0.0.0` on a network you trust.
+
 ## Free setup choices
 
 | Need | Free option |
@@ -73,4 +91,4 @@ pip install -e ".[dev]"
 pytest
 ```
 
-Layout: `leadscout/sources` (discovery), `audit` (signal detection), `enrich` (contacts), `scoring.py`, `llm` (providers), `outreach` (drafts, email, WhatsApp, follow-ups), `reports`, `export`, `cli.py`.
+Layout: `leadscout/sources` (discovery), `audit` (signal detection), `enrich` (contacts), `scoring.py`, `llm` (providers), `outreach` (drafts, email, WhatsApp, follow-ups), `reports`, `export`, `web` (dashboard), `cli.py`.

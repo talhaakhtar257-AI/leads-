@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Settings · LeadScout{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Campaign settings</h1><div class="muted">Editing <strong>{{ campaign_file }}</strong>. It's checked before saving.</div></div>
+</div>
+{% if saved %}<div class="notice ok">Saved.</div>{% endif %}
+{% if error %}<div class="notice error">Not saved. Please fix this first:
+{{ error }}</div>{% endif %}
+<form method="post" action="/settings" class="card">
+  <textarea class="code" name="yaml_text" spellcheck="false">{{ yaml_text }}</textarea>
+  <div class="row" style="margin-top:10px">
+    <button class="primary" type="submit">Save</button>
+    <span class="muted small">Services: web_design, seo, booking_system, social_media, reputation, maintenance, general_marketing. API keys and email passwords go in the <code>.env</code> file, never here.</span>
+  </div>
+</form>
+{% endblock %}
