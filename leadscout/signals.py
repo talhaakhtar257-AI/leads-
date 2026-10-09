@@ -16,6 +16,11 @@ class Signal:
 
 
 SIGNALS: dict[str, Signal] = {
+    "new_business": Signal(
+        "Recently opened",
+        "New businesses are still building their online presence, and the first months decide whether locals find them.",
+        "A launch package: website, Google Business Profile, and a plan to collect the first reviews.",
+    ),
     "no_website": Signal(
         "No website",
         "Customers searching online can't find your menu, services, prices or hours, so they pick a competitor who has a site.",

@@ -17,22 +17,53 @@ from .signals import describe
 Log = Callable[[str], None]
 
 
+def find_businesses(campaign: Campaign, log: Log = print) -> list[dict]:
+    """Query every configured source. One failing source is logged and skipped."""
+    from .sources import overpass
+    center: tuple[float, float] | None = None
+    found: list[dict] = []
+    errors: list[str] = []
+    for name in campaign.sources:
+        try:
+            if name in ("overpass", "foursquare", "yelp") and center is None:
+                center = overpass.geocode(campaign.location)
+            if name == "overpass":
+                batch = overpass.discover(campaign.location, campaign.categories, campaign.radius_km, center=center)
+            elif name == "google_places":
+                from .sources.google_places import discover as places
+                batch = places(campaign.location, campaign.categories)
+            elif name == "foursquare":
+                from .sources.foursquare import discover as fsq
+                batch = fsq(*center, campaign.categories, campaign.radius_km)
+            else:
+                from .sources.yelp import discover as yelp
+                batch = yelp(*center, campaign.categories, campaign.radius_km)
+        except Exception as e:  # keep going with the other sources
+            errors.append(f"{name}: {e}")
+            log(f"Source {name} failed: {e}")
+            continue
+        log(f"{name}: {len(batch)} businesses")
+        found.extend(batch)
+    if errors and len(errors) == len(campaign.sources):
+        raise RuntimeError("All sources failed: " + "; ".join(errors))
+    return found
+
+
 def discover(db: DB, campaign: Campaign, limit: int | None = None, log: Log = print) -> int:
-    if campaign.source == "google_places":
-        from .sources.google_places import discover as find
-        found = find(campaign.location, campaign.categories)
-    else:
-        from .sources.overpass import discover as find
-        found = find(campaign.location, campaign.categories, campaign.radius_km)
-    added = dupes = 0
+    found = find_businesses(campaign, log)
+    added = merged = dupes = 0
     for biz in found:
         if limit is not None and added >= limit:
             break
-        if db.insert_business(campaign.name, biz):
+        _, how = db.upsert_business(campaign.name, biz)
+        if how == "new":
             added += 1
+        elif how == "merged":
+            merged += 1
         else:
             dupes += 1
-    log(f"Discovered {len(found)} businesses: {added} new, {dupes} already known (skipped).")
+    log(f"Discovered {len(found)} businesses: {added} new, {merged} enriched with extra details, "
+        f"{dupes} already known.")
     return added
 
 

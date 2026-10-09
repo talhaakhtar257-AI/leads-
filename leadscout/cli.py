@@ -221,6 +221,23 @@ def export(campaign: str = CampaignOpt, db: str = DbOpt,
 
 
 @app.command()
+def pack(campaign: str = CampaignOpt, db: str = DbOpt,
+         niche: Optional[str] = typer.Option(None, help="Category to include, e.g. cafe (default: all)"),
+         min_score: int = typer.Option(40, help="Only leads at/above this score"),
+         business_emails_only: bool = typer.Option(False, "--business-emails-only",
+                                                   help="Leave out gmail/yahoo/hotmail-style addresses")) -> None:
+    """Build a sellable lead pack: leads.csv + report.pdf, zipped, in output/packs/."""
+    from .export.pack import build_pack
+    c, d = _load(campaign, db)
+    try:
+        path = build_pack(d, c, niche, min_score, business_emails_only)
+    except (ValueError, RuntimeError) as e:
+        log(f"[red]{e}[/]")
+        raise typer.Exit(1)
+    log(f"[green]Lead pack ready:[/] {path}")
+
+
+@app.command()
 def report(campaign: str = CampaignOpt, db: str = DbOpt) -> None:
     """Campaign summary: funnel and most common problems."""
     from .reports.campaign import summarize
@@ -243,7 +260,8 @@ def report(campaign: str = CampaignOpt, db: str = DbOpt) -> None:
 @app.command()
 def web(campaign: str = CampaignOpt, db: str = DbOpt,
         host: str = typer.Option("127.0.0.1", help="Use 0.0.0.0 only on a network you trust: there is no login"),
-        port: int = typer.Option(8000)) -> None:
+        port: int = typer.Option(8000),
+        open_browser: bool = typer.Option(False, "--open", help="Open the dashboard in your browser")) -> None:
     """Open the web dashboard (run jobs, browse leads on a map, approve drafts, send WhatsApp)."""
     try:
         import uvicorn
@@ -251,7 +269,12 @@ def web(campaign: str = CampaignOpt, db: str = DbOpt,
     except ImportError:
         log('[red]The dashboard needs the web extra:[/] pip install -e ".[web]"')
         raise typer.Exit(1)
-    log(f"LeadScout dashboard on [bold]http://{'localhost' if host == '127.0.0.1' else host}:{port}[/] (Ctrl+C to stop)")
+    url = f"http://{'localhost' if host in ('127.0.0.1', '0.0.0.0') else host}:{port}"
+    log(f"LeadScout dashboard on [bold]{url}[/] (Ctrl+C to stop)")
+    if open_browser:
+        import threading
+        import webbrowser
+        threading.Timer(1.5, webbrowser.open, args=(url,)).start()
     uvicorn.run(create_app(campaign, db), host=host, port=port, log_level="warning")
 
 

@@ -94,19 +94,21 @@ def create_app(campaign_path: str = "campaign.yaml", db_path: str = "leads.db", 
         return page(request, "dashboard.html", stats=stats, review_count=queue, whatsapp_count=wa)
 
     @app.get("/leads", response_class=HTMLResponse)
-    def leads(request: Request, min_score: int = 0, status: str = "", q: str = ""):
+    def leads(request: Request, min_score: int = 0, status: str = "", q: str = "", new: int = 0):
         c = require_campaign(request)
         where, params = ["COALESCE(score, 0) >= ?"], [min_score]
         if status in STATUSES:
             where.append("status = ?")
             params.append(status)
+        if new:
+            where.append("signals LIKE '%\"new_business\"%'")
         if q:
             where.append("(name LIKE ? OR address LIKE ? OR category LIKE ?)")
             params += [f"%{q}%"] * 3
         rows = db().businesses(c.name, " AND ".join(where), params)
         points = [{"id": b["id"], "name": b["name"], "score": b["score"], "lat": b["lat"], "lon": b["lon"]}
                   for b in rows if b["lat"] is not None and b["lon"] is not None]
-        return page(request, "leads.html", leads=rows, points=points, min_score=min_score, status=status, q=q)
+        return page(request, "leads.html", leads=rows, points=points, min_score=min_score, status=status, q=q, new=new)
 
     @app.get("/leads/{lead_id}", response_class=HTMLResponse)
     def lead(request: Request, lead_id: int):
@@ -206,6 +208,20 @@ def create_app(campaign_path: str = "campaign.yaml", db_path: str = "leads.db", 
         name = quote(f"{c.name}.csv")
         return StreamingResponse(iter([buf.getvalue()]), media_type="text/csv",
                                  headers={"Content-Disposition": f"attachment; filename*=UTF-8''{name}"})
+
+    @app.get("/pack.zip")
+    def download_pack(request: Request, niche: str = "", min_score: int = 40, business_emails_only: int = 0):
+        from fastapi.responses import FileResponse
+        from ..export.pack import build_pack
+        c = require_campaign(request)
+        try:
+            path = build_pack(db(), c, niche or None, min_score, bool(business_emails_only),
+                              out_dir=root / "output" / "packs")
+        except ValueError as e:
+            raise HTTPException(404, str(e))
+        except RuntimeError as e:
+            raise HTTPException(500, str(e))
+        return FileResponse(path, media_type="application/zip", filename=path.name)
 
     # ----- background jobs -----
     @app.post("/jobs/{step}")

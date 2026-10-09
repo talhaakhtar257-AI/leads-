@@ -4,7 +4,7 @@ location: "Gulberg, Lahore, Pakistan"  # any place name OpenStreetMap understand
 country_code: "92"                # phone country code (no +), used for WhatsApp links
 radius_km: 4
 categories: [cafe, restaurant, bakery]   # see README for the list, or raw OSM tags like shop=tailor
-source: overpass                  # overpass (free) | google_places (needs GOOGLE_PLACES_API_KEY)
+sources: [overpass]               # any of: overpass (free), google_places, foursquare, yelp (need API keys)
 
 # What you sell decides which problems make a business a good lead:
 # web_design | seo | booking_system | social_media | reputation | maintenance | general_marketing

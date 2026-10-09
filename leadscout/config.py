@@ -6,7 +6,9 @@ from pathlib import Path
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
+
+SourceName = Literal["overpass", "google_places", "foursquare", "yelp"]
 
 
 def load_dotenv(path: str | Path = ".env") -> None:
@@ -48,13 +50,24 @@ class Campaign(BaseModel):
     service: str = "web_design"  # key in scoring.SERVICE_PROFILES
     service_pitch: str = "I build fast, mobile-friendly websites for local businesses."
     language: str = "English"
-    source: Literal["overpass", "google_places"] = "overpass"
+    # Discovery sources, merged and de-duplicated. overpass is free; the others need API keys.
+    sources: list[SourceName] = Field(default_factory=lambda: ["overpass"], min_length=1)
     min_score: int = 40  # leads below this are not drafted
     llm: str = "auto"  # auto | gemini | groq | ollama | claude | template
     auto_send: bool = False
     pagespeed: bool = False  # needs PAGESPEED_API_KEY for useful quota
     sender: Sender = Field(default_factory=Sender)
     limits: Limits = Field(default_factory=Limits)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _single_source_compat(cls, data):
+        """Older campaign files used `source: overpass`; treat it as `sources: [overpass]`."""
+        if isinstance(data, dict) and "source" in data:
+            data = dict(data)
+            single = data.pop("source")
+            data.setdefault("sources", [single])
+        return data
 
 
 def load_campaign(path: str | Path) -> Campaign:

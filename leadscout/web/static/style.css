@@ -94,6 +94,8 @@ tr:hover td { background: var(--surface-2); }
 
 /* chips */
 .chip { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: .78rem; background: var(--surface-2); border: 1px solid var(--border); margin: 1px 2px 1px 0; white-space: nowrap; }
+.chip.new { background: color-mix(in srgb, var(--good) 16%, transparent); color: var(--good); border-color: transparent; font-weight: 600; }
+label.check { display: inline-flex; gap: 6px; align-items: center; margin: 0; color: var(--fg); font-size: .9rem; }
 .score { display: inline-block; min-width: 38px; text-align: center; font-weight: 700; border-radius: 6px; padding: 1px 6px; font-variant-numeric: tabular-nums; }
 .score.hot { background: color-mix(in srgb, var(--hot) 18%, transparent); color: var(--hot); }
 .score.warm { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
@@ -126,3 +128,6 @@ tr:hover td { background: var(--surface-2); }
   .hide-sm { display: none; }
   #map { height: 280px; }
 }
+
+details.pack { margin-bottom: 16px; padding: 12px 16px; }
+details.pack summary { cursor: pointer; }

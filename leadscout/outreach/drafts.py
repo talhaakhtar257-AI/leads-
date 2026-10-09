@@ -17,6 +17,7 @@ Rules:
 - WhatsApp: 2-4 short sentences, warm and casual; one emoji max.
 - Follow-ups: 1-3 sentences each, polite bump that adds one small extra value.
 - Do not include a signature, unsubscribe line or address; those are added automatically.
+- If FINDINGS include "Recently opened", start with a short, genuine congratulations on the opening.
 - Write everything in the requested LANGUAGE.
 Reply with only a JSON object with keys: reason, subject, email, whatsapp, followup_1, followup_2.
 "reason" is 1-2 sentences in English for the salesperson explaining why this is a good lead."""
@@ -55,17 +56,20 @@ def _lc(text: str) -> str:
 def template_draft(biz: dict[str, Any], campaign: Campaign, findings: list[dict[str, str]]) -> dict[str, str]:
     """Free, no-LLM fallback (English)."""
     s = campaign.sender
+    is_new = any(f["key"] == "new_business" for f in findings)
+    findings = [f for f in findings if f["key"] != "new_business"]
     first = findings[0] if findings else {"title": "a few quick wins online", "impact": "", "fix": campaign.service_pitch}
     extra = f" I also noticed: {_lc(findings[1]['title'])}." if len(findings) > 1 else ""
     email = (
         f"Hi {biz['name']} team,\n\n"
-        f"I'm {s.name}, I work with local businesses nearby. While looking you up I noticed: {_lc(first['title'])}. "
+        + (f"Congratulations on opening {biz['name']}! " if is_new else "")
+        + f"I'm {s.name}, I work with local businesses nearby. While looking you up I noticed: {_lc(first['title'])}. "
         f"{first['impact']}{extra}\n\n"
         f"{first['fix']} {campaign.service_pitch}\n\n"
         "I put together a free 1-page audit for you. Want me to send it over?"
     )
     whatsapp = (
-        f"Hi! I'm {s.name} from {s.company}. I came across {biz['name']} and noticed: {_lc(first['title'])}. "
+        f"Hi! {'Congrats on the new opening! ' if is_new else ''}I'm {s.name} from {s.company}. I came across {biz['name']} and noticed: {_lc(first['title'])}. "
         f"I made a quick free audit with simple fixes. Can I send it here? 🙂"
     )
     return {
