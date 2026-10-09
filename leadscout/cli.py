@@ -260,7 +260,8 @@ def report(campaign: str = CampaignOpt, db: str = DbOpt) -> None:
 @app.command()
 def web(campaign: str = CampaignOpt, db: str = DbOpt,
         host: str = typer.Option("127.0.0.1", help="Use 0.0.0.0 only on a network you trust: there is no login"),
-        port: int = typer.Option(8000)) -> None:
+        port: int = typer.Option(8000),
+        open_browser: bool = typer.Option(False, "--open", help="Open the dashboard in your browser")) -> None:
     """Open the web dashboard (run jobs, browse leads on a map, approve drafts, send WhatsApp)."""
     try:
         import uvicorn
@@ -268,7 +269,12 @@ def web(campaign: str = CampaignOpt, db: str = DbOpt,
     except ImportError:
         log('[red]The dashboard needs the web extra:[/] pip install -e ".[web]"')
         raise typer.Exit(1)
-    log(f"LeadScout dashboard on [bold]http://{'localhost' if host == '127.0.0.1' else host}:{port}[/] (Ctrl+C to stop)")
+    url = f"http://{'localhost' if host in ('127.0.0.1', '0.0.0.0') else host}:{port}"
+    log(f"LeadScout dashboard on [bold]{url}[/] (Ctrl+C to stop)")
+    if open_browser:
+        import threading
+        import webbrowser
+        threading.Timer(1.5, webbrowser.open, args=(url,)).start()
     uvicorn.run(create_app(campaign, db), host=host, port=port, log_level="warning")
 
 
