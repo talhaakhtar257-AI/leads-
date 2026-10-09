@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}LeadScout{% endblock %}</title>
+<link rel="stylesheet" href="/static/style.css">
+{% block head %}{% endblock %}
+</head>
+<body>
+<header class="topbar">
+  <div class="topbar-inner">
+    <a class="brand" href="/">LeadScout</a>
+    {% set path = request.url.path %}
+    <nav class="nav">
+      <a href="/" class="{{ 'active' if path == '/' }}">Dashboard</a>
+      <a href="/leads" class="{{ 'active' if path.startswith('/leads') }}">Leads</a>
+      <a href="/review" class="{{ 'active' if path == '/review' }}">Review</a>
+      <a href="/whatsapp" class="{{ 'active' if path == '/whatsapp' }}">WhatsApp</a>
+      <a href="/settings" class="{{ 'active' if path == '/settings' }}">Settings</a>
+    </nav>
+    <form class="campaign-switch" method="post" action="/campaign">
+      <select name="file" onchange="this.form.submit()" aria-label="Campaign file">
+        {% for f in campaign_files %}<option value="{{ f }}" {{ 'selected' if f == campaign_file }}>{{ f }}</option>{% endfor %}
+      </select>
+    </form>
+  </div>
+</header>
+<main>
+  {% if not campaign and request.url.path != '/settings' %}
+  <div class="notice error">No valid campaign in <strong>{{ campaign_file }}</strong>. <a href="/settings">Set one up in Settings</a>.</div>
+  {% endif %}
+  {% block content %}{% endblock %}
+</main>
+<script src="/static/app.js"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

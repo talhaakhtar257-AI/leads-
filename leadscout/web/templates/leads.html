@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Leads · LeadScout{% endblock %}
+{% block head %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Leads</h1><div class="muted">{{ leads | length }} shown, best first</div></div>
+  <a class="btn" href="/export.csv">Download CSV</a>
+</div>
+
+<form class="filters" method="get">
+  <input type="search" name="q" value="{{ q }}" placeholder="Search name, address, category">
+  <select name="status">
+    <option value="">Any status</option>
+    {% for s in STATUSES %}<option value="{{ s }}" {{ 'selected' if s == status }}>{{ s }}</option>{% endfor %}
+  </select>
+  <select name="min_score">
+    {% for v in (0, 20, 40, 60, 80) %}<option value="{{ v }}" {{ 'selected' if v == min_score }}>Score ≥ {{ v }}</option>{% endfor %}
+  </select>
+  <button type="submit">Filter</button>
+</form>
+
+{% if points %}<div id="map"></div>{% endif %}
+
+{% if leads %}
+<div class="card table-wrap" style="padding:0">
+<table>
+  <thead><tr><th>Score</th><th>Business</th><th class="hide-sm">Problems</th><th>Contact</th><th>Status</th></tr></thead>
+  <tbody>
+  {% for b in leads %}
+  {% set s = b.score if b.score is not none else -1 %}
+  <tr>
+    <td><span class="score {{ 'hot' if s >= 60 else 'warm' if s >= 40 else 'cold' }}">{{ b.score if b.score is not none else '–' }}</span></td>
+    <td><a href="/leads/{{ b.id }}"><strong>{{ b.name }}</strong></a><div class="muted small">{{ (b.category or '') | replace('_', ' ') }}{% if b.address %} · {{ b.address }}{% endif %}</div></td>
+    <td class="hide-sm">{% for sig in b.signals %}<span class="chip">{{ SIGNALS[sig].title if sig in SIGNALS else sig }}</span>{% endfor %}</td>
+    <td class="small">{% if b.email %}{{ b.email }}<br>{% endif %}{{ b.phone or '' }}</td>
+    <td><span class="status {{ b.status }}">{{ b.status }}</span></td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<div class="card empty">No leads yet. Go to the <a href="/">Dashboard</a> and start a full run.</div>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+{% if points %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>renderMap({{ points | tojson }});</script>
+{% endif %}
+{% endblock %}

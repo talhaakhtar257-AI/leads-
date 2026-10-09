@@ -134,13 +134,9 @@ def review(campaign: str = CampaignOpt, db: str = DbOpt) -> None:
             break
         if choice == "e":
             edited = typer.edit(m["body"])
-            if edited:
-                d.update_message(m["id"], body=edited.strip())
-            choice = "a"
-        status = "approved" if choice == "a" else "skipped"
-        d.update_message(m["id"], status=status)
-        for f in followups:
-            d.update_message(f["id"], status=status)
+            pipeline.review_message(d, m["id"], "approved", body=edited)
+            continue
+        pipeline.review_message(d, m["id"], "approved" if choice == "a" else "skipped")
     log("Review finished. Send approved emails with [bold]leadscout send[/], WhatsApp with [bold]leadscout whatsapp[/].")
 
 
@@ -167,10 +163,7 @@ def whatsapp(campaign: str = CampaignOpt, db: str = DbOpt) -> None:
         console.rule(m["business_name"])
         log(link or f"[red]Could not build a link from phone {m['business_phone']!r} (set country_code)[/]")
         if link and typer.confirm("Mark as sent?", default=False):
-            from .db import now
-            d.update_message(m["id"], status="sent", sent_at=now())
-            if m["business_status"] in ("drafted", "audited"):
-                d.update_business(m["business_id"], status="contacted")
+            pipeline.mark_whatsapp_sent(d, m["id"])
 
 
 @app.command("check-replies")
@@ -186,18 +179,10 @@ def check_replies(db: str = DbOpt, days: int = typer.Option(30, help="Look back 
 def mark(lead_id: int, status: str = typer.Argument(..., help="replied | won | lost | unsubscribed"),
          db: str = DbOpt) -> None:
     """Manually set a lead's status (e.g. after a phone call or WhatsApp reply)."""
-    from .outreach.followups import cancel_followups
-    d = DB(db)
-    if status not in ("replied", "won", "lost", "unsubscribed", "contacted"):
-        raise typer.BadParameter("status must be replied, won, lost, unsubscribed or contacted")
-    b = d.business(lead_id)
-    d.update_business(lead_id, status=status)
-    if status != "contacted":
-        cancel_followups(d, lead_id)
-    if status == "unsubscribed":
-        for v in (b["email"], b["phone"]):
-            if v:
-                d.suppress(v)
+    try:
+        b = pipeline.set_lead_status(DB(db), lead_id, status)
+    except ValueError as e:
+        raise typer.BadParameter(str(e))
     log(f"{b['name']} -> {status}")
 
 
@@ -253,6 +238,21 @@ def report(campaign: str = CampaignOpt, db: str = DbOpt) -> None:
     for row in s["top_problems"]:
         p.add_row(row["title"], str(row["count"]), str(row["pct"]))
     console.print(p)
+
+
+@app.command()
+def web(campaign: str = CampaignOpt, db: str = DbOpt,
+        host: str = typer.Option("127.0.0.1", help="Use 0.0.0.0 only on a network you trust: there is no login"),
+        port: int = typer.Option(8000)) -> None:
+    """Open the web dashboard (run jobs, browse leads on a map, approve drafts, send WhatsApp)."""
+    try:
+        import uvicorn
+        from .web.app import create_app
+    except ImportError:
+        log('[red]The dashboard needs the web extra:[/] pip install -e ".[web]"')
+        raise typer.Exit(1)
+    log(f"LeadScout dashboard on [bold]http://{'localhost' if host == '127.0.0.1' else host}:{port}[/] (Ctrl+C to stop)")
+    uvicorn.run(create_app(campaign, db), host=host, port=port, log_level="warning")
 
 
 if __name__ == "__main__":

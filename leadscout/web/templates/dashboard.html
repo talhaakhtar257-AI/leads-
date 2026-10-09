@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Dashboard · LeadScout{% endblock %}
+{% block content %}
+{% if campaign %}
+<div class="page-head">
+  <div>
+    <h1>{{ campaign.name }}</h1>
+    <div class="muted">{{ campaign.categories | join(', ') | replace('_', ' ') }} within {{ campaign.radius_km }} km of {{ campaign.location }} · selling <strong>{{ campaign.service | replace('_', ' ') }}</strong></div>
+  </div>
+  <div class="row">
+    {% if review_count %}<a class="btn primary" href="/review">Review {{ review_count }} draft{{ 's' if review_count != 1 }}</a>{% endif %}
+    {% if whatsapp_count %}<a class="btn" href="/whatsapp">{{ whatsapp_count }} WhatsApp to send</a>{% endif %}
+    <a class="btn" href="/export.csv">Download CSV</a>
+  </div>
+</div>
+
+<div class="stats">
+  <div class="stat"><div class="v">{{ stats.leads }}</div><div class="l">Leads found</div></div>
+  <div class="stat"><div class="v">{{ stats.hot_leads }}</div><div class="l">Hot leads (60+)</div></div>
+  <div class="stat"><div class="v">{{ stats.with_email }}</div><div class="l">With email</div></div>
+  <div class="stat"><div class="v">{{ stats.with_phone }}</div><div class="l">With phone</div></div>
+  <div class="stat"><div class="v">{{ stats.emails_sent }}</div><div class="l">Emails sent</div></div>
+  <div class="stat"><div class="v">{{ '%s%%' % stats.reply_rate if stats.reply_rate is not none else '–' }}</div><div class="l">Reply rate</div></div>
+</div>
+
+<div class="grid grid-2">
+  <section class="card">
+    <h2>Run the agent</h2>
+    <div class="job-buttons">
+      {% for key, title in STEPS.items() %}
+      <button type="button" class="{{ 'primary' if key == 'run' else '' }}" data-job="{{ key }}" {{ 'disabled' if busy }}
+        {% if key == 'send' %}data-confirm="Send all approved emails now?"{% endif %}>{{ title }}</button>
+      {% endfor %}
+    </div>
+    <div id="job" {% if not job %}hidden{% endif %}>
+      <div class="row small" style="margin-top:12px">
+        <strong id="job-title">{{ job.as_dict().title if job }}</strong>
+        <span id="job-status" class="job-status {{ job.status if job }}">{{ job.status if job }}</span>
+      </div>
+      <div class="log" id="job-log">{% if job %}{{ job.lines | join('\n') }}{% endif %}</div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Most common problems</h2>
+    {% if stats.top_problems %}
+      {% for p in stats.top_problems %}
+      <div class="bar-row">
+        <div><div class="bar-label">{{ p.title }}</div><div class="bar"><span style="width: {{ p.pct }}%"></span></div></div>
+        <div class="n">{{ p.count }}</div>
+      </div>
+      {% endfor %}
+    {% else %}
+      <p class="muted">Run the agent to see which problems are most common in this area.</p>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <h2>Pipeline</h2>
+    {% for s in STATUSES %}
+    <div class="bar-row">
+      <div><div class="bar-label">{{ s | capitalize }}</div><div class="bar"><span style="width: {{ (100 * stats.statuses.get(s, 0) / stats.leads) if stats.leads else 0 }}%"></span></div></div>
+      <div class="n">{{ stats.statuses.get(s, 0) }}</div>
+    </div>
+    {% endfor %}
+  </section>
+</div>
+{% endif %}
+{% endblock %}

@@ -95,3 +95,47 @@ def draft(db: DB, campaign: Campaign, limit: int | None = None, log: Log = print
         db.conn.commit()
         log("auto_send is on: drafts were approved without review.")
     return len(leads)
+
+
+# ---------- shared actions (used by the CLI and the web dashboard) ----------
+
+LEAD_STATUSES = ("contacted", "replied", "won", "lost", "unsubscribed")
+
+
+def review_message(db: DB, msg_id: int, status: str, body: str | None = None, subject: str | None = None) -> None:
+    """Approve or skip a first-touch draft; its follow-ups on the same channel follow along."""
+    if status not in ("approved", "skipped"):
+        raise ValueError("status must be approved or skipped")
+    m = db.messages("m.id = ?", (msg_id,))[0]
+    fields: dict = {"status": status}
+    if body is not None and body.strip():
+        fields["body"] = body.strip()
+    if subject is not None and subject.strip():
+        fields["subject"] = subject.strip()
+    db.update_message(msg_id, **fields)
+    if m["step"] == 0:
+        for f in db.messages("m.business_id = ? AND m.channel = ? AND m.step > 0 AND m.status = 'draft'",
+                             (m["business_id"], m["channel"])):
+            db.update_message(f["id"], status=status)
+
+
+def set_lead_status(db: DB, lead_id: int, status: str) -> dict:
+    from .outreach.followups import cancel_followups
+    if status not in LEAD_STATUSES:
+        raise ValueError(f"status must be one of {', '.join(LEAD_STATUSES)}")
+    b = db.business(lead_id)
+    db.update_business(lead_id, status=status)
+    if status != "contacted":
+        cancel_followups(db, lead_id)
+    if status == "unsubscribed":
+        for v in (b["email"], b["phone"]):
+            if v:
+                db.suppress(v)
+    return b
+
+
+def mark_whatsapp_sent(db: DB, msg_id: int) -> None:
+    m = db.messages("m.id = ? AND m.channel = 'whatsapp'", (msg_id,))[0]
+    db.update_message(msg_id, status="sent", sent_at=now())
+    if m["business_status"] in ("drafted", "audited"):
+        db.update_business(m["business_id"], status="contacted")

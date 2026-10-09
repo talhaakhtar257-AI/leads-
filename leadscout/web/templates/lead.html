@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}{{ b.name }} · LeadScout{% endblock %}
+{% block content %}
+{% set s = b.score if b.score is not none else -1 %}
+<div class="page-head">
+  <div>
+    <div class="small"><a href="/leads">← All leads</a></div>
+    <h1>{{ b.name }} <span class="score {{ 'hot' if s >= 60 else 'warm' if s >= 40 else 'cold' }}">{{ b.score if b.score is not none else '–' }}</span></h1>
+    <div class="muted">{{ (b.category or '') | replace('_', ' ') }}{% if b.address %} · {{ b.address }}{% endif %}</div>
+  </div>
+  <form class="row" method="post" action="/leads/{{ b.id }}/status">
+    <span class="status {{ b.status }}">Status: {{ b.status }}</span>
+    <select name="status">
+      {% for st in ('contacted', 'replied', 'won', 'lost', 'unsubscribed') %}<option value="{{ st }}" {{ 'selected' if st == b.status }}>{{ st }}</option>{% endfor %}
+    </select>
+    <button type="submit">Update</button>
+  </form>
+</div>
+
+<div class="grid grid-2">
+  <section class="card">
+    <h2>Why this lead</h2>
+    <p>{{ b.reason or 'Not scored yet.' }}</p>
+    <ul class="problems">
+      {% for sig in b.signals %}{% if sig in SIGNALS %}
+      <li><strong>{{ SIGNALS[sig].title }}</strong><div class="muted small">{{ SIGNALS[sig].impact }}</div></li>
+      {% endif %}{% else %}<li class="muted">No problems found (or not audited yet).</li>{% endfor %}
+    </ul>
+    <a class="btn" href="/audits/{{ b.id }}" target="_blank" rel="noopener">Open 1-page audit</a>
+  </section>
+
+  <section class="card">
+    <h2>Contact</h2>
+    <p class="small">
+      {% if b.email %}Email: <a href="mailto:{{ b.email }}">{{ b.email }}</a><br>{% endif %}
+      {% if b.phone %}Phone: <a href="tel:{{ b.phone }}">{{ b.phone }}</a><br>{% endif %}
+      {% if b.website %}Website: <a href="{{ b.website if b.website.startswith('http') else 'http://' ~ b.website }}" target="_blank" rel="noopener noreferrer">{{ b.website }}</a><br>{% endif %}
+      {% for k, v in b.socials.items() %}{{ k | capitalize }}: <a href="{{ v }}" target="_blank" rel="noopener noreferrer">{{ v }}</a><br>{% endfor %}
+      {% if b.rating is not none %}Google rating: {{ b.rating }} ({{ b.review_count or 0 }} reviews)<br>{% endif %}
+      {% if b.lat is not none %}<a href="https://www.openstreetmap.org/?mlat={{ b.lat }}&mlon={{ b.lon }}#map=18/{{ b.lat }}/{{ b.lon }}" target="_blank" rel="noopener">View on map</a>{% endif %}
+    </p>
+    {% if b.audit %}<p class="muted small">
+      {% if b.audit.load_seconds is defined %}Load time: {{ b.audit.load_seconds }}s · {% endif %}
+      {% if b.audit.status_code is defined %}HTTP {{ b.audit.status_code }} · {% endif %}
+      {% if b.audit.copyright_year is defined %}© {{ b.audit.copyright_year }} · {% endif %}
+      {% if b.audit.pagespeed_mobile is defined %}PageSpeed {{ b.audit.pagespeed_mobile }}{% endif %}
+    </p>{% endif %}
+  </section>
+</div>
+
+<h2 style="margin-top:24px">Outreach</h2>
+{% for m in messages %}
+<section class="card draft">
+  <div class="draft-head">
+    <strong>{{ 'Email' if m.channel == 'email' else 'WhatsApp' }} · {{ 'first message' if m.step == 0 else 'follow-up %d' % m.step }}</strong>
+    <span class="status">{{ m.status }}{% if m.scheduled_at and m.status == 'scheduled' %} for {{ m.scheduled_at[:10] }}{% endif %}{% if m.sent_at %} · sent {{ m.sent_at[:10] }}{% endif %}</span>
+  </div>
+  {% if m.status in ('draft', 'approved', 'scheduled') %}
+  <form method="post" action="/messages/{{ m.id }}">
+    {% if m.channel == 'email' %}<label>Subject</label><input name="subject" value="{{ m.subject or '' }}" style="width:100%">{% endif %}
+    <label>Message</label>
+    <textarea name="body" rows="{{ 11 if m.step == 0 else 3 }}">{{ m.body }}</textarea>
+    <div class="row" style="margin-top:8px">
+      {% if m.status == 'draft' and m.step == 0 %}
+        <button class="primary" name="action" value="approve">Approve</button>
+        <button name="action" value="skip">Skip</button>
+      {% endif %}
+      <button name="action" value="save">Save edits</button>
+      {% if m.channel == 'whatsapp' and m.status == 'approved' %}
+        {% if m.wa_link %}<a class="btn primary" href="{{ m.wa_link }}" target="_blank" rel="noopener">Open in WhatsApp</a>{% endif %}
+        <button name="action" value="whatsapp_sent">Mark as sent</button>
+      {% endif %}
+    </div>
+  </form>
+  {% else %}
+  {% if m.subject %}<div class="small"><strong>{{ m.subject }}</strong></div>{% endif %}
+  <div style="white-space:pre-wrap">{{ m.body }}</div>
+  {% endif %}
+</section>
+{% else %}
+<div class="card empty">No outreach drafted for this lead yet{% if b.score is not none and campaign and b.score < campaign.min_score %} (score is below the campaign's min_score of {{ campaign.min_score }}){% endif %}.</div>
+{% endfor %}
+{% endblock %}

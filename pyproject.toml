@@ -22,7 +22,8 @@ dependencies = [
 [project.optional-dependencies]
 claude = ["anthropic>=1.0"]
 sheets = ["gspread>=6"]
-dev = ["pytest>=8"]
+web = ["fastapi>=0.110", "uvicorn>=0.29", "python-multipart>=0.0.9"]
+dev = ["pytest>=8", "fastapi>=0.110", "python-multipart>=0.0.9"]
 
 [project.scripts]
 leadscout = "leadscout.cli:app"
@@ -32,3 +33,4 @@ include = ["leadscout*"]
 
 [tool.setuptools.package-data]
 "leadscout.reports" = ["templates/*.html"]
+"leadscout.web" = ["templates/*.html", "static/*"]
