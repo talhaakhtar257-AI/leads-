@@ -221,6 +221,23 @@ def export(campaign: str = CampaignOpt, db: str = DbOpt,
 
 
 @app.command()
+def pack(campaign: str = CampaignOpt, db: str = DbOpt,
+         niche: Optional[str] = typer.Option(None, help="Category to include, e.g. cafe (default: all)"),
+         min_score: int = typer.Option(40, help="Only leads at/above this score"),
+         business_emails_only: bool = typer.Option(False, "--business-emails-only",
+                                                   help="Leave out gmail/yahoo/hotmail-style addresses")) -> None:
+    """Build a sellable lead pack: leads.csv + report.pdf, zipped, in output/packs/."""
+    from .export.pack import build_pack
+    c, d = _load(campaign, db)
+    try:
+        path = build_pack(d, c, niche, min_score, business_emails_only)
+    except (ValueError, RuntimeError) as e:
+        log(f"[red]{e}[/]")
+        raise typer.Exit(1)
+    log(f"[green]Lead pack ready:[/] {path}")
+
+
+@app.command()
 def report(campaign: str = CampaignOpt, db: str = DbOpt) -> None:
     """Campaign summary: funnel and most common problems."""
     from .reports.campaign import summarize

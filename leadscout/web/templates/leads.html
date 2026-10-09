@@ -22,6 +22,21 @@
   <button type="submit">Filter</button>
 </form>
 
+<details class="card pack">
+  <summary><strong>Download a lead pack</strong> <span class="muted small">CSV + PDF market report, ready to sell to agencies</span></summary>
+  <form class="filters" method="get" action="/pack.zip" style="margin:12px 0 0">
+    <select name="niche" aria-label="Niche">
+      <option value="">All categories</option>
+      {% for cat in campaign.categories %}<option value="{{ cat }}">{{ cat | replace('_', ' ') }}</option>{% endfor %}
+    </select>
+    <select name="min_score" aria-label="Minimum score">
+      {% for v in (0, 20, 40, 60, 80) %}<option value="{{ v }}" {{ 'selected' if v == 40 }}>Score ≥ {{ v }}</option>{% endfor %}
+    </select>
+    <label class="check"><input type="checkbox" name="business_emails_only" value="1" checked> Business emails only</label>
+    <button class="primary" type="submit">Download pack</button>
+  </form>
+</details>
+
 {% if points %}<div id="map"></div>{% endif %}
 
 {% if leads %}

@@ -209,6 +209,20 @@ def create_app(campaign_path: str = "campaign.yaml", db_path: str = "leads.db", 
         return StreamingResponse(iter([buf.getvalue()]), media_type="text/csv",
                                  headers={"Content-Disposition": f"attachment; filename*=UTF-8''{name}"})
 
+    @app.get("/pack.zip")
+    def download_pack(request: Request, niche: str = "", min_score: int = 40, business_emails_only: int = 0):
+        from fastapi.responses import FileResponse
+        from ..export.pack import build_pack
+        c = require_campaign(request)
+        try:
+            path = build_pack(db(), c, niche or None, min_score, bool(business_emails_only),
+                              out_dir=root / "output" / "packs")
+        except ValueError as e:
+            raise HTTPException(404, str(e))
+        except RuntimeError as e:
+            raise HTTPException(500, str(e))
+        return FileResponse(path, media_type="application/zip", filename=path.name)
+
     # ----- background jobs -----
     @app.post("/jobs/{step}")
     def start_job(request: Request, step: str):

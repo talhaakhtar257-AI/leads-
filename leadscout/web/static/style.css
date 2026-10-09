@@ -128,3 +128,6 @@ label.check { display: inline-flex; gap: 6px; align-items: center; margin: 0; co
   .hide-sm { display: none; }
   #map { height: 280px; }
 }
+
+details.pack { margin-bottom: 16px; padding: 12px 16px; }
+details.pack summary { cursor: pointer; }
