@@ -7,6 +7,7 @@ from ..config import Campaign
 from ..llm.base import LLM, parse_json
 from ..scoring import relevant_signals
 from ..signals import describe
+from .templates_i18n import language_code, render
 
 SYSTEM = """You write short, friendly, non-spammy cold outreach for a local service provider.
 Rules:
@@ -18,6 +19,7 @@ Rules:
 - Follow-ups: 1-3 sentences each, polite bump that adds one small extra value.
 - Do not include a signature, unsubscribe line or address; those are added automatically.
 - If FINDINGS include "Recently opened", start with a short, genuine congratulations on the opening.
+- TONE "short": email at most 50 words, WhatsApp 1-2 sentences. TONE "friendly": as described above.
 - Write everything in the requested LANGUAGE.
 Reply with only a JSON object with keys: reason, subject, email, whatsapp, followup_1, followup_2.
 "reason" is 1-2 sentences in English for the salesperson explaining why this is a good lead."""
@@ -26,6 +28,7 @@ Reply with only a JSON object with keys: reason, subject, email, whatsapp, follo
 def build_prompt(biz: dict[str, Any], campaign: Campaign, findings: list[dict[str, str]]) -> str:
     lines = [
         f"LANGUAGE: {campaign.language}",
+        f"TONE: {campaign.tone}",
         f"MY SERVICE: {campaign.service_pitch}",
         f"MY NAME: {campaign.sender.name} from {campaign.sender.company}",
         "",
@@ -48,38 +51,15 @@ def template_reason(findings: list[dict[str, str]], service: str) -> str:
     return f"{titles}. Good fit for {service.replace('_', ' ')}."
 
 
-def _lc(text: str) -> str:
-    """Lower-case only the first letter so acronyms like HTTPS/SEO survive mid-sentence."""
-    return text[:1].lower() + text[1:]
-
 
 def template_draft(biz: dict[str, Any], campaign: Campaign, findings: list[dict[str, str]]) -> dict[str, str]:
-    """Free, no-LLM fallback (English)."""
-    s = campaign.sender
-    is_new = any(f["key"] == "new_business" for f in findings)
-    findings = [f for f in findings if f["key"] != "new_business"]
-    first = findings[0] if findings else {"title": "a few quick wins online", "impact": "", "fix": campaign.service_pitch}
-    extra = f" I also noticed: {_lc(findings[1]['title'])}." if len(findings) > 1 else ""
-    email = (
-        f"Hi {biz['name']} team,\n\n"
-        + (f"Congratulations on opening {biz['name']}! " if is_new else "")
-        + f"I'm {s.name}, I work with local businesses nearby. While looking you up I noticed: {_lc(first['title'])}. "
-        f"{first['impact']}{extra}\n\n"
-        f"{first['fix']} {campaign.service_pitch}\n\n"
-        "I put together a free 1-page audit for you. Want me to send it over?"
-    )
-    whatsapp = (
-        f"Hi! {'Congrats on the new opening! ' if is_new else ''}I'm {s.name} from {s.company}. I came across {biz['name']} and noticed: {_lc(first['title'])}. "
-        f"I made a quick free audit with simple fixes. Can I send it here? 🙂"
-    )
-    return {
-        "reason": template_reason(findings, campaign.service),
-        "subject": f"Quick idea for {biz['name']}",
-        "email": email,
-        "whatsapp": whatsapp,
-        "followup_1": f"Hi again, just bumping this in case it got buried. Happy to send the free audit for {biz['name']}, no strings attached.",
-        "followup_2": "Last note from me. If improving this isn't a priority right now, no problem at all. I'll leave the offer open.",
-    }
+    """Free, no-LLM drafts in English, Urdu or Roman Urdu (other languages fall back to English)."""
+    keys = [f["key"] for f in findings]
+    code = language_code(campaign.language) or "en"
+    out = render(code, campaign.tone, biz["name"], campaign.sender.name, campaign.sender.company,
+                 campaign.service_pitch, [k for k in keys if k != "new_business"], "new_business" in keys)
+    out["reason"] = template_reason(findings, campaign.service)
+    return out
 
 
 def draft_for(biz: dict[str, Any], campaign: Campaign, llm: LLM | None) -> dict[str, str]:

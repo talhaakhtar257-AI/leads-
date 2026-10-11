@@ -11,7 +11,9 @@ from typing import Callable
 
 from ..db import DB
 
-UNSUB_WORDS = ("unsubscribe", "remove me", "not interested", "don't contact", "do not contact")
+UNSUB_WORDS = ("unsubscribe", "remove me", "not interested", "don't contact", "do not contact",
+               "رابطہ نہ کریں", "مت بھیجیں", "دلچسپی نہیں", "mat bhejo", "mat bhejein", "rabta na karein",
+               "dilchaspi nahi")
 
 
 def cancel_pending(db: DB, business_id: int) -> None:
@@ -29,7 +31,7 @@ cancel_followups = cancel_pending  # older name
 QUOTE_START = re.compile(
     r"^\s*(>|-{2,}\s*original message|_{10,}|from:\s|sent:\s|-- ?$)"
     r"|(wrote|schrieb|a écrit|escribió|scritto|schreef|написал)\s*:\s*$"
-    r'|not interested\? reply "unsubscribe"',
+    r'|not interested\? reply "unsubscribe"|dilchaspi nahi\? "unsubscribe"|دلچسپی نہیں؟ "unsubscribe"',
     re.IGNORECASE,
 )
 

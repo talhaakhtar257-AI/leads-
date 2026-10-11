@@ -46,7 +46,8 @@ class Campaign(BaseModel):
     categories: list[str]
     service: str = "web_design"  # key in scoring.SERVICE_PROFILES
     service_pitch: str = "I build fast, mobile-friendly websites for local businesses."
-    language: str = "English"
+    language: str = "English"  # English, Urdu and Roman Urdu have built-in templates; others need a free AI key
+    tone: Literal["friendly", "short"] = "friendly"
     # Discovery sources, merged and de-duplicated. overpass is free; the others need API keys.
     sources: list[SourceName] = Field(default_factory=lambda: ["overpass"], min_length=1)
     min_score: int = 40  # leads below this are not drafted

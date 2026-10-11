@@ -114,6 +114,10 @@ def score(db: DB, campaign: Campaign, log: Log = print) -> int:
 def draft(db: DB, campaign: Campaign, limit: int | None = None, log: Log = print) -> int:
     llm = get_llm(campaign.llm)
     log(f"Writing drafts with: {llm.name if llm else 'built-in templates (free, no API key)'}")
+    from .outreach.templates_i18n import language_code
+    if llm is None and language_code(campaign.language) is None:
+        log(f"Note: there are no built-in templates for {campaign.language}, so drafts are in English. "
+            "Add a free Gemini key on the Keys page to write in any language.")
     leads = [b for b in db.businesses(campaign.name, "score >= ? AND status = 'audited'", (campaign.min_score,))
              if (b["email"] or b["phone"]) and not db.has_messages(b["id"])
              and not db.is_suppressed(b["email"], b["phone"])]

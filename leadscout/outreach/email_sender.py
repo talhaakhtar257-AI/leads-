@@ -26,7 +26,8 @@ def footer(campaign: Campaign) -> str:
         lines.append(s.phone)
     if s.website:
         lines.append(s.website)
-    lines += [s.address, "", 'Not interested? Reply "unsubscribe" and I won\'t contact you again.']
+    from .templates_i18n import MESSAGES, language_code
+    lines += [s.address, "", MESSAGES[language_code(campaign.language) or "en"]["footer_unsubscribe"]]
     return "\n".join(lines)
 
 
