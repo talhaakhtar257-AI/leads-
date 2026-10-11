@@ -10,10 +10,11 @@ sources: [overpass]               # any of: overpass (free), google_places, four
 # web_design | seo | booking_system | social_media | reputation | maintenance | general_marketing
 service: web_design
 service_pitch: "I build fast, mobile-friendly websites with online menus and WhatsApp ordering for local restaurants."
-language: English                 # e.g. English, Urdu, Roman Urdu, Arabic, Spanish (non-English needs an LLM)
+language: English                 # English, Urdu and Roman Urdu are built in; other languages need a free AI key
+tone: friendly                    # friendly (a short paragraph) or short (2-3 sentences)
 min_score: 40                     # only leads at/above this score get outreach drafts
 
-llm: auto                         # auto | gemini | groq | ollama | claude | template (no AI, free)
+llm: auto                         # auto (free options only) | template | gemini | groq | ollama | claude (paid)
 auto_send: false                  # true = skip the review step (not recommended)
 pagespeed: false                  # true = Google PageSpeed check (slower; set PAGESPEED_API_KEY)
 

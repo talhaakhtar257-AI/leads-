@@ -26,7 +26,8 @@ def footer(campaign: Campaign) -> str:
         lines.append(s.phone)
     if s.website:
         lines.append(s.website)
-    lines += [s.address, "", 'Not interested? Reply "unsubscribe" and I won\'t contact you again.']
+    from .templates_i18n import MESSAGES, language_code
+    lines += [s.address, "", MESSAGES[language_code(campaign.language) or "en"]["footer_unsubscribe"]]
     return "\n".join(lines)
 
 
@@ -107,7 +108,21 @@ def send_due(db: DB, campaign: Campaign, dry_run: bool = False,
                 continue
             if sent:
                 sleep(random.uniform(campaign.limits.min_delay_seconds, campaign.limits.max_delay_seconds))
-            sender.send(msg)
+            try:
+                sender.send(msg)
+            except smtplib.SMTPRecipientsRefused as e:
+                codes = [code for code, _ in e.recipients.values()]
+                if codes and all(code >= 500 for code in codes):
+                    # This address is permanently bad; mark it and keep going so one lead can't block the queue.
+                    db.update_message(m["id"], status="failed")
+                    log(f"Could not send to {m['business_name']} <{to}>: the address was rejected.")
+                    continue
+                log(f"The mail server is temporarily refusing messages ({e}). Stopping; try again later.")
+                break
+            except (smtplib.SMTPDataError, smtplib.SMTPSenderRefused, smtplib.SMTPServerDisconnected) as e:
+                # Account-wide trouble (daily quota, rate limit, disconnect): stop and keep the rest approved.
+                log(f"Sending stopped by the mail server: {e}. The remaining messages stay queued for next time.")
+                break
             sent += 1
             db.update_message(m["id"], status="sent", sent_at=now())
             log(f"Sent step {m['step']} to {m['business_name']} <{to}>")

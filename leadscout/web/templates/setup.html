@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Get started · LeadScout{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Welcome to LeadScout</h1>
+  <div class="muted">Three quick questions and you're ready to find your first leads. You can change everything later in Settings.</div></div>
+</div>
+{% if broken %}<div class="notice error">Your current campaign file has a problem ({{ broken }}). Saving this wizard will replace it. To keep it, fix it in <a href="/settings">Settings → Advanced</a> instead.</div>{% endif %}
+{% if errors %}<div class="notice error">Please fix:{% for e in errors %}<br>• {{ e }}{% endfor %}</div>{% endif %}
+<form method="post" action="/setup" class="wizard" novalidate>
+  {% include "_campaign_fields.html" %}
+  <div class="row wizard-nav">
+    <button type="button" class="js-back" hidden>Back</button>
+    <button type="button" class="primary js-next" hidden>Next</button>
+    <button type="submit" class="primary js-finish">Save and go to dashboard</button>
+    <span class="muted small js-progress"></span>
+  </div>
+</form>
+{% endblock %}

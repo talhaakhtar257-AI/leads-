@@ -8,7 +8,7 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from ..http import client
+from ..http import client, request_with_retry
 
 SEARCH_URL = "https://places-api.foursquare.com/places/search"
 API_VERSION = "2025-06-17"
@@ -55,7 +55,7 @@ def discover(lat: float, lon: float, categories: list[str], radius_km: float, li
         for cat in categories:
             params = {"ll": f"{lat},{lon}", "radius": int(min(radius_km, 100) * 1000),
                       "query": cat.split("=")[-1].replace("_", " "), "limit": limit, "fields": FIELDS}
-            r = c.get(SEARCH_URL, params=params, headers=headers)
+            r = request_with_retry(c, "GET", SEARCH_URL, params=params, headers=headers)
             r.raise_for_status()
             results.extend(parse_results(r.json(), cat))
     return results

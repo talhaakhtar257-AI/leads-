@@ -1,0 +1,65 @@
+{# Shared fields for the setup wizard and Settings. `v` holds current values. #}
+<section class="card step" data-step="1">
+  <h2>1. What do you sell?</h2>
+  <p class="muted small">LeadScout looks for businesses with problems that <em>your</em> service fixes.</p>
+  <div class="choice-grid">
+    {% for key, (title, desc) in SERVICES.items() %}
+    <label class="choice">
+      <input type="radio" name="service" value="{{ key }}" {{ 'checked' if v.service == key }} required>
+      <span><strong>{{ title }}</strong><span class="muted small">{{ desc }}</span></span>
+    </label>
+    {% endfor %}
+  </div>
+  <label for="service_pitch">Your offer in one sentence</label>
+  <textarea id="service_pitch" name="service_pitch" rows="2" placeholder="I build fast, mobile-friendly websites with WhatsApp ordering for local restaurants.">{{ v.service_pitch }}</textarea>
+  <div class="muted small">This goes into every message, so write it the way you'd say it to a shop owner.</div>
+</section>
+
+<section class="card step" data-step="2">
+  <h2>2. Where should it look?</h2>
+  <label for="location">Area</label>
+  <input id="location" name="location" value="{{ v.location }}" required placeholder="Gulberg, Lahore, Pakistan" class="wide">
+  <div class="muted small">A neighbourhood, city and country works best.</div>
+  <label for="radius_km">Distance around it: <output id="radius_out">{{ '%g' % v.radius_km }}</output> km</label>
+  <input id="radius_km" name="radius_km" type="range" min="0.5" max="{{ [50, v.radius_km] | max }}" step="0.5" value="{{ v.radius_km }}"
+         oninput="document.getElementById('radius_out').value = this.value" class="wide">
+  <label>Kinds of business</label>
+  <div class="check-grid">
+    {% for key, label in CATEGORY_LABELS.items() %}
+    <label class="check"><input type="checkbox" name="categories" value="{{ key }}" {{ 'checked' if key in v.categories }}> {{ label }}</label>
+    {% endfor %}
+  </div>
+  <label for="extra_categories">Other kinds (optional, advanced)</label>
+  <input id="extra_categories" name="extra_categories" value="{{ v.extra_categories }}" placeholder="shop=tailor, amenity=driving_school" class="wide">
+  <label for="country_code">Phone country code</label>
+  <input id="country_code" name="country_code" value="{{ v.country_code }}" placeholder="92" inputmode="numeric" style="max-width:120px">
+  <div class="muted small">Without the +. Used to make WhatsApp links work (92 = Pakistan, 1 = USA, 44 = UK, 971 = UAE).</div>
+</section>
+
+<section class="card step" data-step="3">
+  <h2>3. About you</h2>
+  <p class="muted small">Used to sign your messages. Anti-spam laws require a real name and postal address in sales emails.</p>
+  <div class="form-grid">
+    <div><label for="sender_name">Your name</label><input id="sender_name" name="sender_name" value="{{ v.sender.name if v.sender.name != 'Your Name' }}" required></div>
+    <div><label for="sender_company">Business name</label><input id="sender_company" name="sender_company" value="{{ v.sender.company if v.sender.company != 'Your Agency' }}"></div>
+    <div><label for="sender_email">Email</label><input id="sender_email" name="sender_email" type="email" required value="{{ v.sender.email if v.sender.email != 'you@example.com' }}"></div>
+    <div><label for="sender_phone">Phone</label><input id="sender_phone" name="sender_phone" value="{{ v.sender.phone }}"></div>
+    <div><label for="sender_website">Website (optional)</label><input id="sender_website" name="sender_website" value="{{ v.sender.website }}"></div>
+    <div><label for="sender_address">Postal address</label><input id="sender_address" name="sender_address" required value="{{ v.sender.address if 'Your street' not in v.sender.address }}"></div>
+  </div>
+  <div class="form-grid">
+    <div>
+      <label for="language">Message language</label>
+      <select id="language" name="language">
+        {% for lang in LANGUAGES %}<option value="{{ lang }}" {{ 'selected' if v.language == lang }}>{{ lang }}</option>{% endfor %}
+        <option value="other" {{ 'selected' if v.language not in LANGUAGES }}>Other (needs a free AI key)</option>
+      </select>
+      <input name="language_other" class="js-language-other" value="{{ v.language if v.language not in LANGUAGES }}" placeholder="e.g. Arabic, Spanish" style="margin-top:6px">
+    </div>
+    <div>
+      <label>Message style</label>
+      <label class="check block"><input type="radio" name="tone" value="friendly" {{ 'checked' if v.tone != 'short' }}> Friendly (a short paragraph)</label>
+      <label class="check block"><input type="radio" name="tone" value="short" {{ 'checked' if v.tone == 'short' }}> Short (2–3 sentences)</label>
+    </div>
+  </div>
+</section>

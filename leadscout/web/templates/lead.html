@@ -32,10 +32,10 @@
   <section class="card">
     <h2>Contact</h2>
     <p class="small">
-      {% if b.email %}Email: <a href="mailto:{{ b.email }}">{{ b.email }}</a><br>{% endif %}
-      {% if b.phone %}Phone: <a href="tel:{{ b.phone }}">{{ b.phone }}</a><br>{% endif %}
-      {% if b.website %}Website: <a href="{{ b.website if b.website.startswith('http') else 'http://' ~ b.website }}" target="_blank" rel="noopener noreferrer">{{ b.website }}</a><br>{% endif %}
-      {% for k, v in b.socials.items() %}{{ k | capitalize }}: <a href="{{ v }}" target="_blank" rel="noopener noreferrer">{{ v }}</a><br>{% endfor %}
+      {% if b.email %}Email: <a href="{{ ('mailto:' ~ b.email) | safe_url }}">{{ b.email }}</a><br>{% endif %}
+      {% if b.phone %}Phone: <a href="{{ ('tel:' ~ b.phone) | safe_url }}">{{ b.phone }}</a><br>{% endif %}
+      {% if b.website %}Website: <a href="{{ b.website | safe_url }}" target="_blank" rel="noopener noreferrer">{{ b.website }}</a><br>{% endif %}
+      {% for k, v in b.socials.items() %}{{ k | capitalize }}: <a href="{{ v | safe_url }}" target="_blank" rel="noopener noreferrer">{{ v }}</a><br>{% endfor %}
       {% if b.rating is not none %}Google rating: {{ b.rating }} ({{ b.review_count or 0 }} reviews)<br>{% endif %}
       {% if b.lat is not none %}<a href="https://www.openstreetmap.org/?mlat={{ b.lat }}&mlon={{ b.lon }}#map=18/{{ b.lat }}/{{ b.lon }}" target="_blank" rel="noopener">View on map</a>{% endif %}
     </p>

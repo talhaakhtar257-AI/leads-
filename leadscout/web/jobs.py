@@ -18,6 +18,18 @@ STEPS: dict[str, str] = {
 }
 
 
+STEP_HELP: dict[str, str] = {
+    "run": "Finds businesses, checks their websites, scores them and writes messages. Start here.",
+    "discover": "Only search for new businesses in your area.",
+    "audit": "Check websites of businesses not checked yet.",
+    "score": "Re-score leads, e.g. after changing what you sell.",
+    "draft": "Write messages for good leads that don't have one yet.",
+    "send_dry": "Shows exactly what would be emailed. Sends nothing.",
+    "send": "Emails the messages you approved, within your daily limit.",
+    "check_replies": "Reads your inbox: stops follow-ups to anyone who replied or opted out.",
+}
+
+
 @dataclass
 class Job:
     id: int

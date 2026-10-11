@@ -15,8 +15,8 @@ It costs **$0 to start**: OpenStreetMap for discovery, free LLM tiers (or no LLM
    - **Mac:** `start.command` (the first time, right-click it, choose **Open**, then confirm)
    - **Linux:** `start.sh`
 4. The first run takes a minute while it installs. After that, the dashboard opens in your browser.
-5. Open **Settings** in the dashboard to set your city, categories, the service you sell, and your name and address.
-6. To add API keys (an AI writer, Gmail for sending, extra sources), open the `.env` file in the same folder with any text editor (Notepad, TextEdit), paste the keys after the `=` signs, save, and restart the launcher.
+5. A short **setup wizard** asks what you sell, where to look, and your name and address. Then click **Full run** on the dashboard.
+6. Optional: open **Keys** in the dashboard to paste a free Gemini key (better messages in any language) or your Gmail app password (to send email). There's a **Test email login** button, and nothing needs a restart.
 
 Keep the launcher window open while you use LeadScout. Closing it stops the dashboard.
 
@@ -72,7 +72,8 @@ leadscout web             # opens on http://localhost:8000
 - **Lead page:** why it's a good lead, the evidence, contacts, the 1-page audit, and status updates (replied, won, lost, unsubscribed).
 - **Review:** edit, approve or skip drafts. Follow-ups are approved together with the first message.
 - **WhatsApp:** open each chat with the message already filled in, then mark it as sent.
-- **Settings:** edit the campaign; it's checked before saving. Switch between campaign files from the top bar.
+- **Settings:** a simple form for everything in your campaign (raw YAML under Advanced). Switch between campaign files from the top bar.
+- **Keys:** paste API keys and your Gmail app password, see what's free or paid, and test the email login.
 
 The dashboard has no login and listens only on your own computer by default. Only use `--host 0.0.0.0` on a network you trust.
 
@@ -87,16 +88,32 @@ The dashboard has no login and listens only on your own computer by default. Onl
 | Google Sheets | `pip install -e ".[sheets]"` + a service-account JSON key |
 | CRM | HubSpot free CRM (`HUBSPOT_TOKEN`) |
 
-`llm: auto` picks the first configured key in this order: Claude, Gemini, Groq, Ollama, then templates.
+`llm: auto` only uses free options: the first configured of Gemini, Groq and Ollama, otherwise the built-in templates. Claude is paid, so it is used only when you set `llm: claude`.
 
 **Categories:** `restaurant, cafe, fast_food, bakery, dentist, clinic, doctor, pharmacy, salon, beauty, gym, hotel, car_repair, real_estate, lawyer, accountant, school, tutor, vet, florist, clothes, electronics, furniture, optician, travel_agency`, or any raw OSM tag such as `shop=tailor`.
+
+## Free forever
+
+Everything works at **$0**:
+- Businesses come from OpenStreetMap, and the map is bundled, so no paid services are involved.
+- Messages come from built-in templates in **English, Urdu and Roman Urdu** (friendly or short style), so no AI key is needed.
+- `llm: auto` only ever uses free AI options (Gemini, Groq or Ollama), never paid Claude unless you choose it.
+- Email goes through your own Gmail.
+
+The Keys and Settings pages label anything paid.
+
+## Your data is safe
+
+- **Automatic backups:** before every search and every real email send, `leads.db` is copied to `backups/`, and the newest 10 are kept. To see them, run `leadscout restore`. To put one back, run `leadscout restore backups/leads-….db`; your current data is backed up first.
+- **Picks up where it left off:** if a run stops halfway (a crash, a closed window, a lost connection), run it again and it continues with only the unfinished leads.
+- **Retries:** busy servers and rate limits are retried automatically, and OpenStreetMap search falls back to public mirror servers.
+- **Local only:** the dashboard only answers on your own computer, and it refuses requests sent by other websites.
 
 ## New businesses
 
 A business counts as **recently opened** when any of these is true:
 - OpenStreetMap gives an opening date (`start_date`) in the last 12 months.
 - It was first added to OpenStreetMap in the last 6 months.
-- Google Places shows fewer than 10 reviews.
 
 New owners still need a website, a Google profile and their first reviews, so these leads score higher, and drafts open with a congratulations. Tick **New businesses only** on the dashboard's Leads page to see just them.
 

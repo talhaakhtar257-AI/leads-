@@ -91,9 +91,29 @@ def phone_key(phone: str | None) -> str | None:
     return digits[-9:] if len(digits) >= 7 else None
 
 
-def name_key(name: str, address: str | None) -> str:
-    raw = f"{name} {address or ''}".lower()
-    return re.sub(r"[^a-z0-9]+", "", raw)
+def name_key(name: str, address: str | None, lat: float | None = None, lon: float | None = None) -> str | None:
+    """Name + address, or name + location (~100 m) when there's no address.
+
+    A bare name is never a key: chains like "Subway" have many branches with the same name.
+    """
+    if address:
+        place = address
+    elif lat is not None and lon is not None:
+        place = f"at {float(lat):.3f} {float(lon):.3f}"
+    else:
+        return None
+    # Same normalization as earlier versions, so keys already stored in leads.db still match.
+    return re.sub(r"[^a-z0-9]+", "", f"{name} {place}".lower())
+
+
+def suppression_key(value: str) -> str:
+    """Normalize a suppression value: emails/domains lower-cased, phone numbers by their last 9 digits."""
+    v = value.strip().lower()
+    if "@" not in v and not re.search(r"[a-z]", v):
+        key = phone_key(v)
+        if key:
+            return f"tel:{key}"
+    return v
 
 
 def domain_of(url: str | None) -> str | None:
@@ -104,17 +124,33 @@ def domain_of(url: str | None) -> str | None:
 
 
 class DB:
-    def __init__(self, path: str | Path = "leads.db"):
-        self.conn = sqlite3.connect(str(path))
+    def __init__(self, path: str | Path = "leads.db", check_same_thread: bool = True):
+        self.conn = sqlite3.connect(str(path), check_same_thread=check_same_thread, timeout=30)
         self.conn.row_factory = sqlite3.Row
         self.conn.executescript(SCHEMA)
         self._migrate()
+
+    def close(self) -> None:
+        self.conn.close()
+
+    def __enter__(self) -> "DB":
+        return self
+
+    def __exit__(self, *exc) -> None:
+        self.close()
 
     def _migrate(self) -> None:
         cols = {r["name"] for r in self.conn.execute("PRAGMA table_info(businesses)")}
         for name, definition in MIGRATIONS:
             if name not in cols:
                 self.conn.execute(f"ALTER TABLE businesses ADD COLUMN {name} {definition}")
+        # Older versions stored suppressed phones as typed; normalize them so opt-outs keep matching.
+        for (value,) in self.conn.execute("SELECT value FROM suppression").fetchall():
+            key = suppression_key(value)
+            if key != value:
+                self.conn.execute("INSERT OR IGNORE INTO suppression SELECT ?, reason, created_at FROM suppression"
+                                  " WHERE value = ?", (key, value))
+                self.conn.execute("DELETE FROM suppression WHERE value = ?", (value,))
         self.conn.commit()
 
     # ---------- businesses ----------
@@ -123,7 +159,7 @@ class DB:
         checks = [
             ("phone_key", phone_key(biz.get("phone"))),
             ("domain", dedupe_domain(biz.get("website"))),
-            ("name_key", name_key(biz["name"], biz.get("address"))),
+            ("name_key", name_key(biz["name"], biz.get("address"), biz.get("lat"), biz.get("lon"))),
         ]
         for col, val in checks:
             if not val:
@@ -156,7 +192,7 @@ class DB:
             "socials": json.dumps(biz.get("socials") or {}),
             "meta": json.dumps({**(biz.get("meta") or {}), "sources": [biz.get("source")] if biz.get("source") else []}),
             "phone_key": phone_key(biz.get("phone")),
-            "name_key": name_key(biz["name"], biz.get("address")),
+            "name_key": name_key(biz["name"], biz.get("address"), biz.get("lat"), biz.get("lon")),
             "created_at": now(),
         }
         cols = ", ".join(row)
@@ -222,8 +258,9 @@ class DB:
         sql += " ORDER BY COALESCE(score, -1) DESC, id"
         return [self._decode(r) for r in self.conn.execute(sql, args)]
 
-    def business(self, biz_id: int) -> dict:
-        return self._decode(self.conn.execute("SELECT * FROM businesses WHERE id = ?", (biz_id,)).fetchone())
+    def business(self, biz_id: int) -> dict | None:
+        row = self.conn.execute("SELECT * FROM businesses WHERE id = ?", (biz_id,)).fetchone()
+        return self._decode(row) if row else None
 
     @staticmethod
     def _decode(row: sqlite3.Row) -> dict:
@@ -267,11 +304,11 @@ class DB:
 
     # ---------- suppression ----------
     def suppress(self, value: str, reason: str = "unsubscribed") -> None:
-        self.conn.execute("INSERT OR IGNORE INTO suppression VALUES (?, ?, ?)", (value.strip().lower(), reason, now()))
+        self.conn.execute("INSERT OR IGNORE INTO suppression VALUES (?, ?, ?)", (suppression_key(value), reason, now()))
         self.conn.commit()
 
     def is_suppressed(self, *values: str | None) -> bool:
-        vals = [v.strip().lower() for v in values if v]
+        vals = [suppression_key(v) for v in values if v and v.strip()]
         if not vals:
             return False
         marks = ",".join("?" for _ in vals)

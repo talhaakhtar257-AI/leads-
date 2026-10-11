@@ -2,10 +2,11 @@
 {% block title %}Dashboard · LeadScout{% endblock %}
 {% block content %}
 {% if campaign %}
+{% if welcome %}<div class="notice ok"><strong>You're set up.</strong> Click <strong>Full run</strong> below to find your first leads. It takes a few minutes; you can watch the progress here.</div>{% endif %}
 <div class="page-head">
   <div>
     <h1>{{ campaign.name }}</h1>
-    <div class="muted">{{ campaign.categories | join(', ') | replace('_', ' ') }} within {{ campaign.radius_km }} km of {{ campaign.location }} · selling <strong>{{ campaign.service | replace('_', ' ') }}</strong></div>
+    <div class="muted">{{ campaign.categories | map('replace', '_', ' ') | join(', ') }} within {{ '%g' % campaign.radius_km }} km of {{ campaign.location }} · selling <strong>{{ SERVICES[campaign.service][0] if campaign.service in SERVICES else campaign.service }}</strong></div>
   </div>
   <div class="row">
     {% if review_count %}<a class="btn primary" href="/review">Review {{ review_count }} draft{{ 's' if review_count != 1 }}</a>{% endif %}
@@ -28,8 +29,8 @@
     <h2>Run the agent</h2>
     <div class="job-buttons">
       {% for key, title in STEPS.items() %}
-      <button type="button" class="{{ 'primary' if key == 'run' else '' }}" data-job="{{ key }}" {{ 'disabled' if busy }}
-        {% if key == 'send' %}data-confirm="Send all approved emails now?"{% endif %}>{{ title }}</button>
+      <button type="button" class="job {{ 'primary' if key == 'run' else '' }}" data-job="{{ key }}" {{ 'disabled' if busy }}
+        {% if key == 'send' %}data-confirm="Send all approved emails now?"{% endif %}><strong>{{ title }}</strong><span class="help">{{ STEP_HELP[key] }}</span></button>
       {% endfor %}
     </div>
     <div id="job" {% if not job %}hidden{% endif %}>

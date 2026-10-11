@@ -24,10 +24,8 @@ def test_osm_first_version_rules():
     assert not is_new({"meta": {"osm_version": 1, "osm_timestamp": "2024-01-01T10:00:00Z"}}, TODAY)
 
 
-def test_review_count_rule_only_for_google():
-    assert is_new({"source": "google_places", "review_count": 3}, TODAY)
-    assert not is_new({"source": "google_places", "review_count": 40}, TODAY)
-    assert not is_new({"source": "osm", "review_count": 3}, TODAY)
+def test_few_reviews_alone_is_not_new():
+    assert not is_new({"source": "google_places", "review_count": 3}, TODAY)
 
 
 def test_overpass_keeps_metadata():
