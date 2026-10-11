@@ -7,26 +7,6 @@ function scoreColor(score) {
   return css.getPropertyValue("--muted").trim();
 }
 
-function renderMap(points) {
-  if (!window.L || !points.length) return;
-  const map = L.map("map", { scrollWheelZoom: false });
-  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 19,
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-  }).addTo(map);
-  const bounds = [];
-  for (const p of points) {
-    const marker = L.circleMarker([p.lat, p.lon], {
-      radius: 7, weight: 2, color: scoreColor(p.score ?? 0), fillOpacity: 0.55,
-    }).addTo(map);
-    const a = document.createElement("a");
-    a.href = `/leads/${p.id}`;
-    a.textContent = `${p.name} (${p.score ?? "–"})`;
-    marker.bindPopup(a);
-    bounds.push([p.lat, p.lon]);
-  }
-  map.fitBounds(bounds, { padding: [24, 24], maxZoom: 16 });
-}
 
 const jobBox = document.getElementById("job");
 const jobButtons = document.querySelectorAll("[data-job]");
@@ -141,7 +121,78 @@ document.querySelectorAll(".js-service-custom").forEach((input) => {
   });
 });
 
-// Area picker: find a typed place or click the map; the circle shows the search radius.
+// Map tiles: OpenStreetMap first; if its tiles fail to load, switch to CARTO (also free, built on OSM data).
+const TILE_LAYERS = [
+  ["https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+   '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'],
+  ["https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
+   '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'],
+];
+
+function addBaseLayer(map) {
+  let index = 0, failures = 0, loaded = false, layer = null;
+  const note = document.createElement("div");
+  note.className = "map-note";
+  note.hidden = true;
+  map.getContainer().appendChild(note);
+  const use = (i) => {
+    if (layer) map.removeLayer(layer);
+    index = i; failures = 0; loaded = false;
+    layer = L.tileLayer(TILE_LAYERS[i][0], { maxZoom: 19, subdomains: "abcd", attribution: TILE_LAYERS[i][1] });
+    layer.on("tileload", () => { loaded = true; note.hidden = true; });
+    layer.on("tileerror", () => {
+      failures += 1;
+      if (!loaded && failures >= 3) {
+        if (index + 1 < TILE_LAYERS.length) use(index + 1);
+        else { note.textContent = "Map pictures can't load (check your internet). You can still type a place."; note.hidden = false; }
+      }
+    });
+    layer.addTo(map);
+  };
+  use(0);
+}
+
+function renderMap(points) {
+  if (!window.L || !points.length) return;
+  const map = L.map("map", { scrollWheelZoom: false });
+  addBaseLayer(map);
+  const bounds = [];
+  for (const p of points) {
+    const marker = L.circleMarker([p.lat, p.lon], {
+      radius: 7, weight: 2, color: scoreColor(p.score ?? 0), fillOpacity: 0.55,
+    }).addTo(map);
+    const a = document.createElement("a");
+    a.href = `/leads/${p.id}`;
+    a.textContent = `${p.name} (${p.score ?? "–"})`;
+    marker.bindPopup(a);
+    bounds.push([p.lat, p.lon]);
+  }
+  map.fitBounds(bounds, { padding: [24, 24], maxZoom: 16 });
+}
+
+// Place search. Suggestions come straight from Photon (free, OSM-based) in the browser; if that fails,
+// LeadScout's own server looks the place up (OpenStreetMap Nominatim, then Photon).
+async function searchPlaces(q, limit = 6) {
+  try {
+    const r = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=${limit}`);
+    if (r.ok) {
+      const data = await r.json();
+      return (data.features || []).map((f) => {
+        const p = f.properties || {};
+        const title = p.name || p.street || p.city || p.county || p.state || q;
+        const detail = [p.district, p.city !== title ? p.city : null, p.state, p.country]
+          .filter((x, i, arr) => x && arr.indexOf(x) === i).join(", ");
+        return { lat: f.geometry.coordinates[1], lon: f.geometry.coordinates[0], title, detail };
+      });
+    }
+  } catch (e) { /* fall through to the server */ }
+  const r = await fetch(`/api/geocode?q=${encodeURIComponent(q)}`);
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.detail || "Place not found.");
+  return [{ lat: data.lat, lon: data.lon, title: q, detail: "" }];
+}
+
+// Area picker: type to get suggestions, drag the map to look around, click (or drag the pin) to set the centre.
 function initAreaPicker() {
   const el = document.getElementById("area-map");
   if (!el || !window.L) return;
@@ -151,13 +202,12 @@ function initAreaPicker() {
   const radius = form.querySelector("#radius_km");
   const status = form.querySelector(".js-area-status");
   const area = form.querySelector("#location");
-  const map = L.map(el).setView([25, 55], 2);
-  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 19,
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-  }).addTo(map);
-  let marker = null, circle = null;
+  const list = form.querySelector("#area-suggestions");
+  const map = L.map(el, { dragging: true, scrollWheelZoom: true, tap: true }).setView([30.4, 69.3], 5);
+  addBaseLayer(map);
+  let marker = null, circle = null, results = [], active = -1, typingTimer = null, lastQuery = "";
 
+  const fit = () => { if (circle) map.fitBounds(circle.getBounds(), { padding: [20, 20] }); };
   const place = (lat, lon, zoomToFit) => {
     latInput.value = lat.toFixed(6);
     lonInput.value = lon.toFixed(6);
@@ -165,38 +215,104 @@ function initAreaPicker() {
     if (!marker) {
       marker = L.marker([lat, lon], { draggable: true, icon: L.divIcon({ className: "pin", html: "📍", iconSize: [28, 28], iconAnchor: [14, 26] }) }).addTo(map);
       marker.on("dragend", () => { const p = marker.getLatLng(); place(p.lat, p.lng, false); });
-      circle = L.circle([lat, lon], { radius: km * 1000, weight: 2, fillOpacity: 0.08 }).addTo(map);
+      circle = L.circle([lat, lon], { radius: km * 1000, weight: 2, fillOpacity: 0.08, interactive: false }).addTo(map);
     } else {
       marker.setLatLng([lat, lon]);
       circle.setLatLng([lat, lon]);
       circle.setRadius(km * 1000);
     }
-    if (zoomToFit) map.fitBounds(circle.getBounds(), { padding: [20, 20] });
+    if (zoomToFit) fit();
     status.textContent = `Centre pinned at ${lat.toFixed(4)}, ${lon.toFixed(4)}. Drag the pin or click elsewhere to move it.`;
   };
 
-  map.on("click", (e) => place(e.latlng.lat, e.latlng.lng, false));
-  radius.addEventListener("input", () => {
-    if (circle) { circle.setRadius((parseFloat(radius.value) || 5) * 1000); map.fitBounds(circle.getBounds(), { padding: [20, 20] }); }
-  });
-
+  const closeList = () => { list.hidden = true; area.setAttribute("aria-expanded", "false"); active = -1; };
+  const choose = (res) => {
+    if (res.detail) area.value = [res.title, res.detail].join(", ");
+    closeList();
+    place(res.lat, res.lon, true);
+  };
+  const showList = (items, message) => {
+    list.innerHTML = "";
+    results = items;
+    if (!items.length) {
+      const li = document.createElement("li");
+      li.className = "empty";
+      li.textContent = message || "No places found. Try adding the city, or click the map.";
+      list.appendChild(li);
+    }
+    items.forEach((res, i) => {
+      const li = document.createElement("li");
+      li.setAttribute("role", "option");
+      li.textContent = res.title;
+      if (res.detail) { const small = document.createElement("small"); small.textContent = res.detail; li.appendChild(small); }
+      li.addEventListener("mousedown", (e) => { e.preventDefault(); choose(res); });
+      li.addEventListener("mouseenter", () => highlight(i));
+      list.appendChild(li);
+    });
+    list.hidden = false;
+    area.setAttribute("aria-expanded", "true");
+    active = -1;
+  };
+  const highlight = (i) => {
+    active = i;
+    [...list.children].forEach((li, n) => li.setAttribute("aria-selected", String(n === i)));
+  };
+  const suggest = async (q) => {
+    lastQuery = q;
+    try {
+      const items = await searchPlaces(q);
+      if (q === lastQuery) showList(items);
+    } catch (e) {
+      if (q === lastQuery) showList([], e.message);
+    }
+  };
   const find = async () => {
     const q = area.value.trim();
     if (!q) { area.focus(); return; }
     status.textContent = "Searching…";
     try {
-      const r = await fetch(`/api/geocode?q=${encodeURIComponent(q)}`);
-      const data = await r.json();
-      if (!r.ok) { status.textContent = data.detail || "Place not found."; return; }
-      place(data.lat, data.lon, true);
+      const items = await searchPlaces(q, 1);
+      if (!items.length) { status.textContent = "Place not found. Try adding the city and country, or click the map."; return; }
+      closeList();
+      place(items[0].lat, items[0].lon, true);
     } catch (e) {
-      status.textContent = "Couldn't search the map. Check your internet connection.";
+      status.textContent = e.message || "Couldn't search the map. Check your internet connection.";
     }
   };
+
+  area.addEventListener("input", () => {
+    clearTimeout(typingTimer);
+    const q = area.value.trim();
+    if (q.length < 3) { closeList(); return; }
+    typingTimer = setTimeout(() => suggest(q), 350);
+  });
+  area.addEventListener("keydown", (e) => {
+    if (!list.hidden && results.length && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+      e.preventDefault();
+      highlight((active + (e.key === "ArrowDown" ? 1 : -1) + results.length) % results.length);
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (!list.hidden && active >= 0) choose(results[active]); else find();
+    } else if (e.key === "Escape") {
+      closeList();
+    }
+  });
+  area.addEventListener("blur", () => setTimeout(closeList, 150));
   form.querySelector(".js-find-area").addEventListener("click", find);
-  area.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); find(); } });
-  // Typing a different area moves the pin there, so the text and the pin never disagree.
-  area.addEventListener("change", () => { if (area.value.trim()) find(); });
+  form.querySelector(".js-my-location").addEventListener("click", () => {
+    if (!navigator.geolocation) { status.textContent = "This browser can't share your location."; return; }
+    status.textContent = "Finding your location…";
+    navigator.geolocation.getCurrentPosition(
+      (pos) => place(pos.coords.latitude, pos.coords.longitude, true),
+      () => { status.textContent = "Location not shared. Type a place or click the map instead."; },
+      { enableHighAccuracy: false, timeout: 10000 },
+    );
+  });
+
+  map.on("click", (e) => place(e.latlng.lat, e.latlng.lng, false));
+  radius.addEventListener("input", () => {
+    if (circle) { circle.setRadius((parseFloat(radius.value) || 5) * 1000); fit(); }
+  });
 
   if (el.dataset.lat && el.dataset.lon) {
     place(parseFloat(el.dataset.lat), parseFloat(el.dataset.lon), true);
@@ -204,7 +320,6 @@ function initAreaPicker() {
     find();
   }
   // The wizard shows step 2 later; Leaflet needs to re-measure once it's visible.
-  document.addEventListener("wizard:step", () => {
-    setTimeout(() => { map.invalidateSize(); if (circle) map.fitBounds(circle.getBounds(), { padding: [20, 20] }); }, 50);
-  });
+  document.addEventListener("wizard:step", () => setTimeout(() => { map.invalidateSize(); fit(); }, 50));
+  window.addEventListener("resize", () => map.invalidateSize());
 }

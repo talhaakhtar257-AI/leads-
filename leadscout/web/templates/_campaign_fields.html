@@ -25,10 +25,15 @@
   <h2>2. Where should it look?</h2>
   <label for="location">Area</label>
   <div class="row area-row">
-    <input id="location" name="location" value="{{ v.location }}" placeholder="Gulberg, Lahore, Pakistan">
+    <div class="area-search">
+      <input id="location" name="location" value="{{ v.location }}" placeholder="Start typing, e.g. Gulberg Lahore"
+             autocomplete="off" role="combobox" aria-expanded="false" aria-controls="area-suggestions">
+      <ul id="area-suggestions" class="suggestions" role="listbox" hidden></ul>
+    </div>
     <button type="button" class="js-find-area">Find on map</button>
+    <button type="button" class="js-my-location" title="Use where this computer is">📍 My location</button>
   </div>
-  <div class="muted small">Type a neighbourhood, city and country and press <strong>Find on map</strong>, or just <strong>click the map</strong> to choose the centre.</div>
+  <div class="muted small">Start typing and pick a place from the list, or <strong>drag the map</strong> to look around and <strong>click</strong> to set the centre.</div>
   <div id="area-map" class="area-map" data-lat="{{ v.center_lat if v.center_lat is not none else '' }}"
        data-lon="{{ v.center_lon if v.center_lon is not none else '' }}"></div>
   <div class="muted small js-area-status">{% if v.center_lat is not none %}Centre pinned on the map.{% endif %}</div>
