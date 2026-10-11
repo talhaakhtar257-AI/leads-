@@ -20,9 +20,8 @@ class LLMError(RuntimeError):
 def get_llm(name: str = "auto") -> LLM | None:
     """Return a provider, or None for the free template-only mode."""
     if name == "auto":
-        if os.environ.get("ANTHROPIC_API_KEY"):
-            name = "claude"
-        elif os.environ.get("GEMINI_API_KEY"):
+        # Free providers only. Claude (paid) is used only when chosen explicitly with llm: claude.
+        if os.environ.get("GEMINI_API_KEY"):
             name = "gemini"
         elif os.environ.get("GROQ_API_KEY"):
             name = "groq"

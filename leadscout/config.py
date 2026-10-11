@@ -11,17 +11,14 @@ from pydantic import BaseModel, Field, model_validator
 SourceName = Literal["overpass", "google_places", "foursquare", "yelp"]
 
 
-def load_dotenv(path: str | Path = ".env") -> None:
-    """Minimal .env loader: KEY=VALUE lines, existing env vars win."""
-    p = Path(path)
-    if not p.exists():
-        return
-    for line in p.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, _, value = line.partition("=")
-        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+def load_dotenv(path: str | Path = ".env", override: bool = False) -> None:
+    """Minimal .env loader: KEY=VALUE lines. Existing env vars win unless override=True."""
+    from .envfile import read_env
+    for key, value in read_env(path).items():
+        if override:
+            os.environ[key] = value
+        else:
+            os.environ.setdefault(key, value)
 
 
 class Sender(BaseModel):

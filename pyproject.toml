@@ -34,4 +34,4 @@ include = ["leadscout*"]
 
 [tool.setuptools.package-data]
 "leadscout.reports" = ["templates/*.html"]
-"leadscout.web" = ["templates/*.html", "static/*"]
+"leadscout.web" = ["templates/*.html", "static/*.*", "static/vendor/leaflet/*", "static/vendor/leaflet/images/*"]

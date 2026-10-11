@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Keys · LeadScout{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Keys and accounts</h1>
+  <div class="muted">All optional. LeadScout works with none of these, for free. Keys are saved only in the <code>.env</code> file on this computer.</div></div>
+</div>
+{% if saved %}<div class="notice ok">Saved. Changes apply right away.</div>{% endif %}
+{% if test == 'ok' %}<div class="notice ok">Email login works. You're ready to send.</div>
+{% elif test %}<div class="notice error">{{ test }}</div>{% endif %}
+
+<form method="post" action="/keys">
+{% for group, items in groups.items() %}
+<section class="card keys-group">
+  <h2>{{ group }}</h2>
+  {% for it in items %}{% set k = it.spec %}
+  <div class="key-row">
+    <div class="key-info">
+      <label for="{{ k.name }}"><strong>{{ k.label }}</strong>
+        <span class="cost {{ k.cost }}">{{ {'free': 'Free', 'free-tier': 'Free tier', 'paid': 'Paid'}[k.cost] }}</span>
+        {% if it.is_set %}<span class="chip new">Set</span>{% endif %}</label>
+      <div class="muted small">{{ k.help }}{% if k.link %} <a href="{{ k.link | safe_url }}" target="_blank" rel="noopener">Get it here</a>{% endif %}</div>
+    </div>
+    <div class="key-input">
+      {% if k.secret %}
+      <input id="{{ k.name }}" name="{{ k.name }}" type="password" autocomplete="off"
+             placeholder="{{ it.shown or 'Paste key' }}">
+      {% if it.is_set %}<label class="check small"><input type="checkbox" name="clear_{{ k.name }}" value="1"> Remove</label>{% endif %}
+      {% else %}
+      <input id="{{ k.name }}" name="{{ k.name }}" value="{{ it.value }}" placeholder="{{ k.default }}">
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+  {% if group == 'Sending email' %}
+  <div class="row" style="margin-top:8px"><button type="submit" formaction="/keys/test-email" formnovalidate>Test email login</button>
+    <span class="muted small">Saves, then logs in and out without sending anything.</span></div>
+  {% endif %}
+</section>
+{% endfor %}
+<div class="row"><button class="primary" type="submit">Save keys</button></div>
+</form>
+{% endblock %}

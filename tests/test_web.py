@@ -164,3 +164,34 @@ def test_whatsapp_queue_hides_closed_leads(site):
     assert "wa.me" in client.get("/whatsapp").text
     d.update_business(bid, status="lost")
     assert "wa.me" not in client.get("/whatsapp").text
+
+
+def test_keys_page_saves_and_masks(site, tmp_path, monkeypatch):
+    client, _, _ = site
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    page = client.get("/keys").text
+    assert "Google Gemini key" in page and "Free tier" in page and "Paid" in page
+    r = client.post("/keys", data={"GEMINI_API_KEY": "AIzaSecretKey123456", "SMTP_HOST": "smtp.gmail.com"},
+                    follow_redirects=False)
+    assert r.status_code == 303
+    assert "GEMINI_API_KEY=AIzaSecretKey123456" in (tmp_path / ".env").read_text()
+    page = client.get("/keys").text
+    assert "AIzaSecretKey123456" not in page and "••••3456" in page
+    # Leaving a secret empty keeps it; ticking Remove clears it.
+    client.post("/keys", data={"GEMINI_API_KEY": ""})
+    assert "AIzaSecretKey123456" in (tmp_path / ".env").read_text()
+    client.post("/keys", data={"clear_GEMINI_API_KEY": "1"})
+    assert "AIzaSecretKey123456" not in (tmp_path / ".env").read_text()
+
+
+def test_test_email_needs_credentials(site, monkeypatch):
+    client, _, _ = site
+    r = client.post("/keys/test-email", data={}, follow_redirects=False)
+    assert r.status_code == 303 and "Add%20your%20Gmail" in r.headers["location"]
+    import leadscout.envfile as ef
+    monkeypatch.setattr(ef, "test_smtp_login", lambda *a: None)
+    r = client.post("/keys/test-email", data={"SMTP_USER": "me@gmail.com", "SMTP_PASSWORD": "app pass word x"},
+                    follow_redirects=False)
+    assert r.headers["location"] == "/keys?test=ok"
+    monkeypatch.delenv("SMTP_USER", raising=False)
+    monkeypatch.delenv("SMTP_PASSWORD", raising=False)

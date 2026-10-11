@@ -87,7 +87,7 @@ The dashboard has no login and listens only on your own computer by default. Onl
 | Google Sheets | `pip install -e ".[sheets]"` + a service-account JSON key |
 | CRM | HubSpot free CRM (`HUBSPOT_TOKEN`) |
 
-`llm: auto` picks the first configured key in this order: Claude, Gemini, Groq, Ollama, then templates.
+`llm: auto` only uses free options: the first configured of Gemini, Groq and Ollama, otherwise the built-in templates. Claude is paid, so it is used only when you set `llm: claude`.
 
 **Categories:** `restaurant, cafe, fast_food, bakery, dentist, clinic, doctor, pharmacy, salon, beauty, gym, hotel, car_repair, real_estate, lawyer, accountant, school, tutor, vet, florist, clothes, electronics, furniture, optician, travel_agency`, or any raw OSM tag such as `shop=tailor`.
 

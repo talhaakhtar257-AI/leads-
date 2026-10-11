@@ -39,8 +39,9 @@ CLOSED = "('replied','won','lost','unsubscribed')"
 
 def create_app(campaign_path: str = "campaign.yaml", db_path: str = "leads.db", root: str | Path = ".",
                allowed_hosts: set[str] | None = LOCAL_HOSTS) -> FastAPI:
-    load_dotenv()
     root = Path(root).resolve()
+    env_path = root / ".env"
+    load_dotenv(env_path)
     app = FastAPI(title="LeadScout", docs_url=None, redoc_url=None)
 
     @app.middleware("http")
@@ -188,6 +189,56 @@ def create_app(campaign_path: str = "campaign.yaml", db_path: str = "leads.db", 
         if file in find_campaign_files(root):
             resp.set_cookie("campaign", file, samesite="strict")
         return resp
+
+    # ----- API keys (.env) -----
+    @app.get("/keys", response_class=HTMLResponse)
+    def keys(request: Request, saved: int = 0, test: str = ""):
+        from ..envfile import KEYS, mask, read_env
+        values = read_env(env_path)
+        groups: dict[str, list] = {}
+        for k in KEYS:
+            current = values.get(k.name, "")
+            groups.setdefault(k.group, []).append({
+                "spec": k, "is_set": bool(current),
+                "shown": (mask(current) if k.secret else current) or "",
+                "value": "" if k.secret else (current or k.default),
+            })
+        return page(request, "keys.html", groups=groups, saved=bool(saved), test=test)
+
+    async def save_key_form(request: Request) -> None:
+        from ..envfile import KEYS, update_env
+        form = await request.form()
+        changes: dict[str, str | None] = {}
+        for k in KEYS:
+            if form.get(f"clear_{k.name}"):
+                changes[k.name] = None
+                continue
+            value = (form.get(k.name) or "").strip()
+            if k.secret:
+                if value:  # empty secret field = keep the current value
+                    changes[k.name] = value
+            else:
+                changes[k.name] = value or None
+        update_env(env_path, changes)
+
+    @app.post("/keys")
+    async def save_keys(request: Request):
+        await save_key_form(request)
+        return RedirectResponse("/keys?saved=1", status_code=303)
+
+    @app.post("/keys/test-email")
+    async def test_email(request: Request):
+        """Save what's in the form, then try logging in to the mail server."""
+        from urllib.parse import quote as q
+        from starlette.concurrency import run_in_threadpool
+        from ..envfile import read_env, test_smtp_login
+        await save_key_form(request)
+        v = read_env(env_path)
+        if not v.get("SMTP_USER") or not v.get("SMTP_PASSWORD"):
+            return RedirectResponse("/keys?test=" + q("Add your Gmail address and app password first."), 303)
+        error = await run_in_threadpool(test_smtp_login, v.get("SMTP_HOST") or "smtp.gmail.com",
+                                        int(v.get("SMTP_PORT") or 587), v["SMTP_USER"], v["SMTP_PASSWORD"])
+        return RedirectResponse("/keys?test=" + q(error or "ok"), 303)
 
     # ----- actions -----
     @app.post("/messages/{msg_id}")
