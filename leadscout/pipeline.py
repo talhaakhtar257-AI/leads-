@@ -21,6 +21,8 @@ def find_businesses(campaign: Campaign, log: Log = print) -> list[dict]:
     """Query every configured source. One failing source is logged and skipped."""
     from .sources import overpass
     center: tuple[float, float] | None = None
+    if campaign.center_lat is not None and campaign.center_lon is not None:
+        center = (campaign.center_lat, campaign.center_lon)  # picked on the map
     found: list[dict] = []
     errors: list[str] = []
     for name in campaign.sources:
@@ -31,7 +33,8 @@ def find_businesses(campaign: Campaign, log: Log = print) -> list[dict]:
                 batch = overpass.discover(campaign.location, campaign.categories, campaign.radius_km, center=center)
             elif name == "google_places":
                 from .sources.google_places import discover as places
-                batch = places(campaign.location, campaign.categories)
+                batch = places(campaign.location, campaign.categories, center=center,
+                               radius_km=campaign.radius_km)
             elif name == "foursquare":
                 from .sources.foursquare import discover as fsq
                 batch = fsq(*center, campaign.categories, campaign.radius_km)

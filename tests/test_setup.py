@@ -46,7 +46,7 @@ def test_wizard_explains_missing_fields(fresh):
     client, root = fresh
     bad = {**WIZARD, "categories": [], "extra_categories": "", "location": ""}
     page = client.post("/setup", data=bad).text
-    assert "Business types: pick at least one" in page and "Location:" in page
+    assert "Business types: pick at least one" in page and "Area:" in page
     assert not (root / "campaign.yaml").exists()
 
 
@@ -101,3 +101,39 @@ def test_fractional_and_large_radius_survive_settings(fresh):
     assert load_campaign(root / "campaign.yaml").radius_km == 2.5
     page = client.get("/settings").text
     assert 'value="2.5"' in page
+
+
+def test_own_service_words_and_map_centre(fresh):
+    client, root = fresh
+    form = {**WIZARD, "service": "custom", "service_custom": "logo design",
+            "categories": ["cafe"], "extra_categories": "tailor, printing press, Shop=Tailor",
+            "location": "", "center_lat": "31.520370", "center_lon": "74.358749"}
+    r = client.post("/setup", data=form, follow_redirects=False)
+    assert r.status_code == 303, r.text
+    c = load_campaign(root / "campaign.yaml")
+    assert c.service == "logo design" and c.categories == ["cafe", "tailor", "printing press", "Shop=Tailor"]
+    assert (c.center_lat, c.center_lon) == (31.52037, 74.358749) and c.location == ""
+    page = client.get("/settings").text
+    assert 'value="custom" checked' in page and 'value="logo design"' in page
+    assert 'data-lat="31.52037"' in page and "tailor, printing press" in page
+    assert "the spot pinned on the map" in client.get("/").text
+
+
+def test_own_service_needs_words_and_area_needs_text_or_pin(fresh):
+    client, root = fresh
+    page = client.post("/setup", data={**WIZARD, "service": "custom", "service_custom": ""}).text
+    assert "Something else" in page and "What you sell" in page
+    page = client.post("/setup", data={**WIZARD, "location": ""}).text
+    assert "click the map" in page
+    page = client.post("/setup", data={**WIZARD, "extra_categories": 'tai"lor'}).text
+    assert "only letters, numbers and spaces" in page
+    assert not (root / "campaign.yaml").exists()
+
+
+def test_geocode_api(fresh, monkeypatch):
+    import leadscout.sources.overpass as ov
+    client, _ = fresh
+    monkeypatch.setattr(ov, "geocode", lambda q: (31.5, 74.3) if "Lahore" in q else (_ for _ in ()).throw(ValueError("Could not find")))
+    assert client.get("/api/geocode?q=Gulberg, Lahore").json() == {"lat": 31.5, "lon": 74.3}
+    assert client.get("/api/geocode?q=Nowhereville").status_code == 404
+    assert client.get("/api/geocode?q=").status_code == 400

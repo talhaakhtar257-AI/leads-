@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Settings · LeadScout{% endblock %}
+{% block head %}<link rel="stylesheet" href="/static/vendor/leaflet/leaflet.css">{% endblock %}
 {% block content %}
 <div class="page-head">
   <div><h1>Settings</h1><div class="muted">Campaign <strong>{{ v.name }}</strong> · saved in {{ campaign_file }}</div></div>
@@ -50,3 +51,4 @@
   </form>
 </details>
 {% endblock %}
+{% block scripts %}<script src="/static/vendor/leaflet/leaflet.js"></script><script>initAreaPicker();</script>{% endblock %}

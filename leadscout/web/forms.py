@@ -71,18 +71,45 @@ def form_to_data(form, existing: dict[str, Any] | None) -> tuple[dict[str, Any],
             return default
 
     categories = [c for c in form.getlist("categories") if c in CATEGORY_TAGS]
-    categories += [x.strip() for x in get("extra_categories").split(",") if x.strip()]
+    for extra in (" ".join(x.split()) for x in re.split(r"[,،\n]", get("extra_categories"))):
+        if not extra or extra in categories:
+            continue
+        if "=" in extra or re.fullmatch(r"[\w ]+", extra):
+            categories.append(extra)
+        else:
+            problems.append(f"Business type '{extra}': use only letters, numbers and spaces.")
     language = get("language", "English")
     if language == "other":
         language = get("language_other") or "English"
     location = get("location")
     service = get("service", "web_design")
+    if service == "custom":
+        service = " ".join(get("service_custom").split())[:60]
+        if not service:
+            problems.append("What you sell: type it in the 'Something else' box, e.g. logo design.")
+            service = "general_marketing"
+
+    def coordinate(key: str, low: float, high: float) -> float | None:
+        raw = get(key)
+        if not raw:
+            return None
+        try:
+            value = round(float(raw), 6)
+        except ValueError:
+            return None
+        return value if low <= value <= high else None
+
+    center_lat, center_lon = coordinate("center_lat", -90, 90), coordinate("center_lon", -180, 180)
+    if center_lat is None or center_lon is None:
+        center_lat = center_lon = None
 
     data.update({
-        "name": get("name") or data.get("name") or f"{_slug(location.split(',')[0])}-{service.replace('_', '-')}",
+        "name": get("name") or data.get("name") or f"{_slug(location.split(',')[0])}-{_slug(service)}",
         "location": location,
         "country_code": re.sub(r"\D", "", get("country_code")),
         "radius_km": number("radius_km", 5, float, "Distance"),
+        "center_lat": center_lat,
+        "center_lon": center_lon,
         "categories": categories,
         "service": service,
         "service_pitch": get("service_pitch") or Campaign.model_fields["service_pitch"].default,
@@ -124,8 +151,8 @@ def friendly_errors(e: ValidationError) -> list[str]:
 
 def validate(data: dict[str, Any]) -> tuple[Campaign | None, list[str]]:
     errors = []
-    if not data.get("location"):
-        errors.append("Location: tell LeadScout where to search, e.g. 'Gulberg, Lahore, Pakistan'.")
+    if not data.get("location") and data.get("center_lat") is None:
+        errors.append("Area: type where to search, e.g. 'Gulberg, Lahore, Pakistan', or click the map.")
     if not data.get("categories"):
         errors.append("Business types: pick at least one.")
     sender = data.get("sender") or {}
@@ -144,6 +171,7 @@ def validate(data: dict[str, Any]) -> tuple[Campaign | None, list[str]]:
 
 
 def save_campaign(path: Path, data: dict[str, Any]) -> None:
+    data = {k: v for k, v in data.items() if not (k in ("center_lat", "center_lon") and v is None)}
     text = HEADER + yaml.safe_dump(data, sort_keys=False, allow_unicode=True)
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(text, encoding="utf-8")

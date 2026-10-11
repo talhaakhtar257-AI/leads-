@@ -6,7 +6,7 @@
 <div class="page-head">
   <div>
     <h1>{{ campaign.name }}</h1>
-    <div class="muted">{{ campaign.categories | map('replace', '_', ' ') | join(', ') }} within {{ '%g' % campaign.radius_km }} km of {{ campaign.location }} · selling <strong>{{ SERVICES[campaign.service][0] if campaign.service in SERVICES else campaign.service }}</strong></div>
+    <div class="muted">{{ campaign.categories | map('replace', '_', ' ') | join(', ') }} within {{ '%g' % campaign.radius_km }} km of {{ campaign.location or 'the spot pinned on the map' }} · selling <strong>{{ SERVICES[campaign.service][0] if campaign.service in SERVICES else campaign.service }}</strong></div>
   </div>
   <div class="row">
     {% if review_count %}<a class="btn primary" href="/review">Review {{ review_count }} draft{{ 's' if review_count != 1 }}</a>{% endif %}

@@ -58,16 +58,26 @@ CATEGORY_TAGS: dict[str, list[str]] = {
 }
 
 
+# OSM keys a plain word like "tailor" or "printing press" is most likely to be filed under.
+PLAIN_WORD_KEYS = ("shop", "amenity", "office", "craft", "healthcare", "leisure", "tourism")
+
+
 def tag_filters(category: str) -> list[str]:
-    """Known category, or a raw OSM tag such as 'shop=tailor'."""
+    """Known category, a plain word in your own language ("tailor", "wedding hall"), or a raw OSM tag."""
     if category in CATEGORY_TAGS:
         return CATEGORY_TAGS[category]
+    if "=" not in category:
+        word = " ".join(category.split())
+        if not word or not re.fullmatch(r"[\w ]+", word):
+            raise ValueError(f"The business type {category!r} can only contain letters, numbers and spaces.")
+        value = word.lower().replace(" ", "_")
+        # Tagged as that kind of place, or with the word in its name ("Ali Tailors", "Royal Wedding Hall").
+        return [f'"{k}"="{value}"' for k in PLAIN_WORD_KEYS] + [f'"name"~"{word}",i']
     if "=" in category:
         k, v = (x.strip() for x in category.split("=", 1))
         if not re.fullmatch(r"[\w:.-]+", k) or not re.fullmatch(r"[\w:. -]+", v):
             raise ValueError(f"The custom business type {category!r} isn't valid. Use key=value, e.g. shop=tailor.")
         return [f'"{k}"="{v}"']
-    raise ValueError(f"Unknown category {category!r}. Use one of {sorted(CATEGORY_TAGS)} or a raw OSM tag like shop=tailor")
 
 
 @lru_cache(maxsize=64)

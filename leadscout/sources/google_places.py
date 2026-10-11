@@ -40,7 +40,8 @@ def parse_places(data: dict[str, Any], category: str) -> list[dict[str, Any]]:
     return [b for b in out if b["name"]]
 
 
-def discover(location: str, categories: list[str], max_pages: int = 3) -> list[dict[str, Any]]:
+def discover(location: str, categories: list[str], max_pages: int = 3,
+             center: tuple[float, float] | None = None, radius_km: float = 5) -> list[dict[str, Any]]:
     key = os.environ.get("GOOGLE_PLACES_API_KEY")
     if not key:
         raise RuntimeError("GOOGLE_PLACES_API_KEY is not set (or use source: overpass, which is free)")
@@ -48,7 +49,11 @@ def discover(location: str, categories: list[str], max_pages: int = 3) -> list[d
     results: list[dict[str, Any]] = []
     with client() as c:
         for cat in categories:
-            body: dict[str, Any] = {"textQuery": f"{cat.replace('_', ' ')} in {location}", "pageSize": 20}
+            what = cat.split("=")[-1].replace("_", " ")
+            body: dict[str, Any] = {"textQuery": f"{what} in {location}" if location else what, "pageSize": 20}
+            if center:
+                body["locationBias"] = {"circle": {"center": {"latitude": center[0], "longitude": center[1]},
+                                                   "radius": min(radius_km, 50) * 1000}}
             for _ in range(max_pages):
                 r = request_with_retry(c, "POST", SEARCH_URL, json=body, headers=headers)
                 r.raise_for_status()
