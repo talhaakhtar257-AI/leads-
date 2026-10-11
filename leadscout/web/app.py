@@ -191,6 +191,7 @@ def create_app(campaign_path: str = "campaign.yaml", db_path: str = "leads.db", 
                 v[k] = val
         if "source" in data and "sources" not in data:
             v["sources"] = [data["source"]]
+        v["service_custom"] = "" if v["service"] in forms.SERVICES else v["service"]
         cats = list(v.get("categories") or [])
         v["categories"] = [x for x in cats if x in forms.CATEGORY_LABELS]
         v["extra_categories"] = v.get("extra_categories") or ", ".join(x for x in cats if x not in forms.CATEGORY_LABELS)
@@ -199,6 +200,21 @@ def create_app(campaign_path: str = "campaign.yaml", db_path: str = "leads.db", 
     def yaml_of(request: Request) -> str:
         p = campaign_file(request)
         return p.read_text(encoding="utf-8") if p.exists() else ""
+
+    @app.get("/api/geocode")
+    def api_geocode(q: str = ""):
+        """Find a typed place on the map (OpenStreetMap Nominatim, rate-limited and cached)."""
+        from ..sources.overpass import geocode
+        q = " ".join(q.split())[:200]
+        if not q:
+            raise HTTPException(400, "Type a place first.")
+        try:
+            lat, lon = geocode(q)
+        except ValueError as e:
+            raise HTTPException(404, str(e))
+        except Exception:
+            raise HTTPException(503, "Couldn't reach the map search right now. Check your internet and try again.")
+        return {"lat": lat, "lon": lon}
 
     @app.get("/setup", response_class=HTMLResponse)
     def setup(request: Request):

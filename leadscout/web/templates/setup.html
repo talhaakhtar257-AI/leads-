@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Get started · LeadScout{% endblock %}
+{% block head %}<link rel="stylesheet" href="/static/vendor/leaflet/leaflet.css">{% endblock %}
 {% block content %}
 <div class="page-head">
   <div><h1>Welcome to LeadScout</h1>
@@ -17,3 +18,4 @@
   </div>
 </form>
 {% endblock %}
+{% block scripts %}<script src="/static/vendor/leaflet/leaflet.js"></script><script>initAreaPicker();</script>{% endblock %}

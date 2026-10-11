@@ -100,6 +100,16 @@ if (wizard) {
     for (const el of step.querySelectorAll("input[required], textarea[required]")) {
       if (!el.checkValidity()) { el.reportValidity(); return false; }
     }
+    const custom = step.querySelector('input[name="service"][value="custom"]');
+    if (custom && custom.checked && !step.querySelector(".js-service-custom").value.trim()) {
+      alert("Type what you sell in the 'Something else' box.");
+      return false;
+    }
+    const area = step.querySelector("#location");
+    if (area && !area.value.trim() && !step.querySelector('input[name="center_lat"]').value) {
+      alert("Type an area or click the map to choose where to search.");
+      return false;
+    }
     if (step.querySelector('input[name="categories"]') && !step.querySelector('input[name="categories"]:checked')
         && !step.querySelector("#extra_categories").value.trim()) {
       alert("Pick at least one kind of business.");
@@ -107,7 +117,9 @@ if (wizard) {
     }
     return true;
   };
-  next.addEventListener("click", () => { if (stepValid()) { i += 1; show(); } });
+  next.addEventListener("click", () => {
+    if (stepValid()) { i += 1; show(); document.dispatchEvent(new Event("wizard:step")); }
+  });
   back.addEventListener("click", () => { i -= 1; show(); });
   show();
 }
@@ -120,3 +132,79 @@ document.querySelectorAll('select[name="language"]').forEach((sel) => {
   sel.addEventListener("change", sync);
   sync();
 });
+
+// Typing in "Something else" selects that option.
+document.querySelectorAll(".js-service-custom").forEach((input) => {
+  input.addEventListener("focus", () => {
+    const radio = input.closest("label").querySelector('input[type="radio"]');
+    if (radio) radio.checked = true;
+  });
+});
+
+// Area picker: find a typed place or click the map; the circle shows the search radius.
+function initAreaPicker() {
+  const el = document.getElementById("area-map");
+  if (!el || !window.L) return;
+  const form = el.closest("form");
+  const latInput = form.querySelector('input[name="center_lat"]');
+  const lonInput = form.querySelector('input[name="center_lon"]');
+  const radius = form.querySelector("#radius_km");
+  const status = form.querySelector(".js-area-status");
+  const area = form.querySelector("#location");
+  const map = L.map(el).setView([25, 55], 2);
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  }).addTo(map);
+  let marker = null, circle = null;
+
+  const place = (lat, lon, zoomToFit) => {
+    latInput.value = lat.toFixed(6);
+    lonInput.value = lon.toFixed(6);
+    const km = parseFloat(radius.value) || 5;
+    if (!marker) {
+      marker = L.marker([lat, lon], { draggable: true, icon: L.divIcon({ className: "pin", html: "📍", iconSize: [28, 28], iconAnchor: [14, 26] }) }).addTo(map);
+      marker.on("dragend", () => { const p = marker.getLatLng(); place(p.lat, p.lng, false); });
+      circle = L.circle([lat, lon], { radius: km * 1000, weight: 2, fillOpacity: 0.08 }).addTo(map);
+    } else {
+      marker.setLatLng([lat, lon]);
+      circle.setLatLng([lat, lon]);
+      circle.setRadius(km * 1000);
+    }
+    if (zoomToFit) map.fitBounds(circle.getBounds(), { padding: [20, 20] });
+    status.textContent = `Centre pinned at ${lat.toFixed(4)}, ${lon.toFixed(4)}. Drag the pin or click elsewhere to move it.`;
+  };
+
+  map.on("click", (e) => place(e.latlng.lat, e.latlng.lng, false));
+  radius.addEventListener("input", () => {
+    if (circle) { circle.setRadius((parseFloat(radius.value) || 5) * 1000); map.fitBounds(circle.getBounds(), { padding: [20, 20] }); }
+  });
+
+  const find = async () => {
+    const q = area.value.trim();
+    if (!q) { area.focus(); return; }
+    status.textContent = "Searching…";
+    try {
+      const r = await fetch(`/api/geocode?q=${encodeURIComponent(q)}`);
+      const data = await r.json();
+      if (!r.ok) { status.textContent = data.detail || "Place not found."; return; }
+      place(data.lat, data.lon, true);
+    } catch (e) {
+      status.textContent = "Couldn't search the map. Check your internet connection.";
+    }
+  };
+  form.querySelector(".js-find-area").addEventListener("click", find);
+  area.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); find(); } });
+  // Typing a different area moves the pin there, so the text and the pin never disagree.
+  area.addEventListener("change", () => { if (area.value.trim()) find(); });
+
+  if (el.dataset.lat && el.dataset.lon) {
+    place(parseFloat(el.dataset.lat), parseFloat(el.dataset.lon), true);
+  } else if (area.value.trim()) {
+    find();
+  }
+  // The wizard shows step 2 later; Leaflet needs to re-measure once it's visible.
+  document.addEventListener("wizard:step", () => {
+    setTimeout(() => { map.invalidateSize(); if (circle) map.fitBounds(circle.getBounds(), { padding: [20, 20] }); }, 50);
+  });
+}

@@ -43,8 +43,11 @@ class Campaign(BaseModel):
     location: str  # free-text place name, geocoded via OpenStreetMap Nominatim
     country_code: str = ""  # phone country code without "+", e.g. "92" or "1"
     radius_km: float = 5
+    # Optional exact centre picked on the map; when set, it's used instead of looking up `location`.
+    center_lat: float | None = Field(default=None, ge=-90, le=90)
+    center_lon: float | None = Field(default=None, ge=-180, le=180)
     categories: list[str]
-    service: str = "web_design"  # key in scoring.SERVICE_PROFILES
+    service: str = "web_design"  # key in scoring.SERVICE_PROFILES, or your own words (scored as general marketing)
     service_pitch: str = "I build fast, mobile-friendly websites for local businesses."
     language: str = "English"  # English, Urdu and Roman Urdu have built-in templates; others need a free AI key
     tone: Literal["friendly", "short"] = "friendly"

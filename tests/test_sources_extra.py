@@ -72,3 +72,13 @@ def test_one_failing_source_does_not_stop_the_run(db, campaign, monkeypatch):
     campaign.sources = ["yelp"]
     with pytest.raises(RuntimeError, match="All sources failed"):
         pipeline.discover(db, campaign, log=lines.append)
+
+
+def test_map_centre_skips_geocoding(db, campaign, monkeypatch):
+    import leadscout.sources.overpass as ov
+    seen = {}
+    monkeypatch.setattr(ov, "geocode", lambda loc: (_ for _ in ()).throw(AssertionError("should not geocode")))
+    monkeypatch.setattr(ov, "discover", lambda loc, cats, r, center=None: seen.setdefault("center", center) and [])
+    campaign.center_lat, campaign.center_lon = 31.52, 74.35
+    pipeline.discover(db, campaign, log=lambda *_: None)
+    assert seen["center"] == (31.52, 74.35)

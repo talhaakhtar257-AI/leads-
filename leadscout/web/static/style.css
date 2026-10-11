@@ -164,3 +164,10 @@ input[type=range] { padding: 0; }
 .wizard-nav { margin-top: 4px; }
 .wizard.js .step { display: none; }
 .wizard.js .step.current { display: block; }
+
+/* area picker */
+.area-row { flex-wrap: nowrap; }
+.area-row input { flex: 1; min-width: 0; }
+.area-map { height: 320px; border-radius: var(--radius); border: 1px solid var(--border); margin: 8px 0 4px; }
+.choice input[type=text], .choice input:not([type]) { width: 100%; }
+.leaflet-div-icon.pin { background: none; border: 0; font-size: 26px; line-height: 1; }

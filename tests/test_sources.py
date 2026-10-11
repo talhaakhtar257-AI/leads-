@@ -27,3 +27,32 @@ def test_parse_places():
     ]}
     out = parse_places(data, "cafe")
     assert len(out) == 1 and out[0]["rating"] == 3.6 and out[0]["review_count"] == 12
+
+
+def test_plain_word_business_types():
+    f = tag_filters("printing press")
+    assert '"shop"="printing_press"' in f and '"craft"="printing_press"' in f
+    assert '"name"~"printing press",i' in f
+    q = build_query("tailor", 31.5, 74.3, 3000)
+    assert 'nwr["name"~"tailor",i]["name"](around:3000,31.5,74.3);' in q
+    import pytest
+    with pytest.raises(ValueError):
+        tag_filters('tai"lor')
+    assert tag_filters("درزی")[-1] == '"name"~"درزی",i'  # Urdu words work too
+
+
+def test_places_uses_map_centre(monkeypatch):
+    import httpx
+    import leadscout.sources.google_places as gp
+    bodies = []
+
+    def handler(request):
+        import json
+        bodies.append(json.loads(request.content))
+        return httpx.Response(200, json={"places": []})
+
+    monkeypatch.setenv("GOOGLE_PLACES_API_KEY", "k")
+    monkeypatch.setattr(gp, "client", lambda: httpx.Client(transport=httpx.MockTransport(handler)))
+    gp.discover("", ["cafe"], center=(31.5, 74.3), radius_km=3)
+    assert bodies[0]["textQuery"] == "cafe"
+    assert bodies[0]["locationBias"]["circle"]["radius"] == 3000

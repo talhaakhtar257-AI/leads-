@@ -15,7 +15,7 @@ It costs **$0 to start**: OpenStreetMap for discovery, free LLM tiers (or no LLM
    - **Mac:** `start.command` (the first time, right-click it, choose **Open**, then confirm)
    - **Linux:** `start.sh`
 4. The first run takes a minute while it installs. After that, the dashboard opens in your browser.
-5. A short **setup wizard** asks what you sell, where to look, and your name and address. Then click **Full run** on the dashboard.
+5. A short **setup wizard** asks what you sell (pick one or type your own), where to look (type the area or click the map), and your name and address. Then click **Full run** on the dashboard.
 6. Optional: open **Keys** in the dashboard to paste a free Gemini key (better messages in any language) or your Gmail app password (to send email). There's a **Test email login** button, and nothing needs a restart.
 
 Keep the launcher window open while you use LeadScout. Closing it stops the dashboard.

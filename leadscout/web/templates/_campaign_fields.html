@@ -9,6 +9,12 @@
       <span><strong>{{ title }}</strong><span class="muted small">{{ desc }}</span></span>
     </label>
     {% endfor %}
+    <label class="choice">
+      <input type="radio" name="service" value="custom" {{ 'checked' if v.service_custom }} required>
+      <span><strong>Something else</strong><span class="muted small">Type what you sell in your own words.</span>
+        <input name="service_custom" class="js-service-custom" value="{{ v.service_custom }}" maxlength="60"
+               placeholder="e.g. logo design, photography, printing" style="margin-top:6px"></span>
+    </label>
   </div>
   <label for="service_pitch">Your offer in one sentence</label>
   <textarea id="service_pitch" name="service_pitch" rows="2" placeholder="I build fast, mobile-friendly websites with WhatsApp ordering for local restaurants.">{{ v.service_pitch }}</textarea>
@@ -18,8 +24,16 @@
 <section class="card step" data-step="2">
   <h2>2. Where should it look?</h2>
   <label for="location">Area</label>
-  <input id="location" name="location" value="{{ v.location }}" required placeholder="Gulberg, Lahore, Pakistan" class="wide">
-  <div class="muted small">A neighbourhood, city and country works best.</div>
+  <div class="row area-row">
+    <input id="location" name="location" value="{{ v.location }}" placeholder="Gulberg, Lahore, Pakistan">
+    <button type="button" class="js-find-area">Find on map</button>
+  </div>
+  <div class="muted small">Type a neighbourhood, city and country and press <strong>Find on map</strong>, or just <strong>click the map</strong> to choose the centre.</div>
+  <div id="area-map" class="area-map" data-lat="{{ v.center_lat if v.center_lat is not none else '' }}"
+       data-lon="{{ v.center_lon if v.center_lon is not none else '' }}"></div>
+  <div class="muted small js-area-status">{% if v.center_lat is not none %}Centre pinned on the map.{% endif %}</div>
+  <input type="hidden" name="center_lat" value="{{ v.center_lat if v.center_lat is not none else '' }}">
+  <input type="hidden" name="center_lon" value="{{ v.center_lon if v.center_lon is not none else '' }}">
   <label for="radius_km">Distance around it: <output id="radius_out">{{ '%g' % v.radius_km }}</output> km</label>
   <input id="radius_km" name="radius_km" type="range" min="0.5" max="{{ [50, v.radius_km] | max }}" step="0.5" value="{{ v.radius_km }}"
          oninput="document.getElementById('radius_out').value = this.value" class="wide">
@@ -29,8 +43,9 @@
     <label class="check"><input type="checkbox" name="categories" value="{{ key }}" {{ 'checked' if key in v.categories }}> {{ label }}</label>
     {% endfor %}
   </div>
-  <label for="extra_categories">Other kinds (optional, advanced)</label>
-  <input id="extra_categories" name="extra_categories" value="{{ v.extra_categories }}" placeholder="shop=tailor, amenity=driving_school" class="wide">
+  <label for="extra_categories">Other kinds, in your own words (optional)</label>
+  <input id="extra_categories" name="extra_categories" value="{{ v.extra_categories }}" placeholder="tailor, printing press, wedding hall" class="wide">
+  <div class="muted small">Separate with commas. LeadScout finds places of that type, or with that word in their name.</div>
   <label for="country_code">Phone country code</label>
   <input id="country_code" name="country_code" value="{{ v.country_code }}" placeholder="92" inputmode="numeric" style="max-width:120px">
   <div class="muted small">Without the +. Used to make WhatsApp links work (92 = Pakistan, 1 = USA, 44 = UK, 971 = UAE).</div>
