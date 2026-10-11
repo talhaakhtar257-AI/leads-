@@ -171,3 +171,16 @@ input[type=range] { padding: 0; }
 .area-map { height: 320px; border-radius: var(--radius); border: 1px solid var(--border); margin: 8px 0 4px; }
 .choice input[type=text], .choice input:not([type]) { width: 100%; }
 .leaflet-div-icon.pin { background: none; border: 0; font-size: 26px; line-height: 1; }
+.area-search { position: relative; flex: 1; min-width: 0; }
+.area-search input { width: 100%; }
+.suggestions { position: absolute; z-index: 1200; left: 0; right: 0; top: calc(100% + 4px); margin: 0; padding: 4px 0;
+  list-style: none; background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(16, 24, 40, .14); max-height: 260px; overflow-y: auto; }
+.suggestions li { padding: 8px 12px; cursor: pointer; font-size: .92rem; }
+.suggestions li small { display: block; color: var(--muted); }
+.suggestions li[aria-selected="true"], .suggestions li:hover { background: var(--surface-2); }
+.suggestions li.empty { cursor: default; color: var(--muted); }
+.map-note { position: absolute; z-index: 800; left: 50%; top: 10px; transform: translateX(-50%); background: var(--surface);
+  border: 1px solid var(--border); border-radius: 8px; padding: 4px 10px; font-size: .8rem; color: var(--muted); }
+.area-map { position: relative; }
+@media (max-width: 640px) { .area-row { flex-wrap: wrap; } .area-search { flex-basis: 100%; } }

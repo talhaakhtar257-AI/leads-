@@ -16,6 +16,7 @@ import httpx
 from ..http import client, request_with_retry
 
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
+PHOTON_URL = "https://photon.komoot.io/api/"  # free OSM-based geocoder, used when Nominatim fails
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"
 # Public mirrors, tried in order when the main server is busy or down.
 OVERPASS_URLS = [
@@ -80,8 +81,7 @@ def tag_filters(category: str) -> list[str]:
         return [f'"{k}"="{v}"']
 
 
-@lru_cache(maxsize=64)
-def geocode(location: str) -> tuple[float, float]:
+def _nominatim(location: str) -> tuple[float, float] | None:
     global _nominatim_last
     with _nominatim_lock:
         wait = 1.1 - (time.monotonic() - _nominatim_last)
@@ -89,14 +89,43 @@ def geocode(location: str) -> tuple[float, float]:
             time.sleep(wait)
         try:
             with client() as c:
-                r = request_with_retry(c, "GET", NOMINATIM_URL, params={"q": location, "format": "json", "limit": 1})
+                r = request_with_retry(c, "GET", NOMINATIM_URL, params={"q": location, "format": "json", "limit": 1},
+                                       attempts=2)
         finally:
             _nominatim_last = time.monotonic()
     r.raise_for_status()
     data = r.json()
-    if not data:
-        raise ValueError(f"Could not find the location {location!r}. Try adding the city and country.")
-    return float(data[0]["lat"]), float(data[0]["lon"])
+    return (float(data[0]["lat"]), float(data[0]["lon"])) if data else None
+
+
+def _photon(location: str) -> tuple[float, float] | None:
+    with client() as c:
+        r = request_with_retry(c, "GET", PHOTON_URL, params={"q": location, "limit": 1}, attempts=2)
+    r.raise_for_status()
+    features = r.json().get("features") or []
+    if not features:
+        return None
+    lon, lat = features[0]["geometry"]["coordinates"][:2]
+    return float(lat), float(lon)
+
+
+@lru_cache(maxsize=64)
+def geocode(location: str) -> tuple[float, float]:
+    """Place name -> (lat, lon). Tries OpenStreetMap Nominatim, then Photon (also free, OSM-based)."""
+    errors: list[str] = []
+    for lookup in (_nominatim, _photon):
+        try:
+            found = lookup(location)
+        except (httpx.HTTPError, ValueError, KeyError, IndexError, TypeError) as e:
+            errors.append(f"{lookup.__name__.strip('_')}: {e}")
+            continue
+        if found:
+            return found
+    if errors and len(errors) == 2:
+        raise RuntimeError("Couldn't reach the map search services (" + "; ".join(errors) + "). "
+                           "Check your internet connection, or pick the spot on the map instead.")
+    raise ValueError(f"Could not find the location {location!r}. Try adding the city and country, "
+                     "or click the spot on the map.")
 
 
 def run_query(c: httpx.Client, query: str) -> dict[str, Any]:

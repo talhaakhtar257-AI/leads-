@@ -179,6 +179,7 @@ def create_app(campaign_path: str = "campaign.yaml", db_path: str = "leads.db", 
     def form_values(data: dict) -> dict:
         """Campaign data with defaults filled in, shaped for the form templates."""
         v = {"name": "", "location": "", "country_code": "", "radius_km": 5, "categories": [],
+             "center_lat": None, "center_lon": None,
              "service": "web_design", "service_pitch": "", "language": "English", "tone": "friendly",
              "sources": ["overpass"], "llm": "auto", "min_score": 40, "auto_send": False, "pagespeed": False}
         from ..config import Limits, Sender
@@ -212,8 +213,10 @@ def create_app(campaign_path: str = "campaign.yaml", db_path: str = "leads.db", 
             lat, lon = geocode(q)
         except ValueError as e:
             raise HTTPException(404, str(e))
-        except Exception:
-            raise HTTPException(503, "Couldn't reach the map search right now. Check your internet and try again.")
+        except Exception as e:
+            print(f"[LeadScout] map search failed for {q!r}: {e}")  # visible in the black window
+            raise HTTPException(503, "Couldn't reach the map search right now. Check your internet, "
+                                     "or click the spot on the map instead.")
         return {"lat": lat, "lon": lon}
 
     @app.get("/setup", response_class=HTMLResponse)

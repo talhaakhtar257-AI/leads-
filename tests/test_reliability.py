@@ -113,3 +113,36 @@ def test_audit_resumes_where_it_stopped(db, campaign, monkeypatch):
     assert pl.audit(db, campaign, log=lines.append) == 3
     assert sorted(audited) == [f"Cafe {i}" for i in range(5)]  # nobody audited twice
     assert "2 leads already checked; continuing with the 3 remaining." in lines[0]
+
+
+def test_geocode_falls_back_to_photon(monkeypatch):
+    overpass.geocode.cache_clear()
+
+    def handler(request):
+        if request.url.host == "nominatim.openstreetmap.org":
+            return httpx.Response(403, text="blocked")
+        return httpx.Response(200, json={"features": [{"geometry": {"coordinates": [74.3587, 31.5204]}}]})
+
+    monkeypatch.setattr(overpass, "client", lambda *a, **k: client_for(handler))
+    assert overpass.geocode("Gulberg Lahore") == (31.5204, 74.3587)
+    overpass.geocode.cache_clear()
+
+
+def test_geocode_both_down_is_a_clear_error(monkeypatch):
+    overpass.geocode.cache_clear()
+    monkeypatch.setattr(overpass, "client", lambda *a, **k: client_for(lambda req: httpx.Response(503)))
+    with pytest.raises(RuntimeError, match="Couldn't reach the map search"):
+        overpass.geocode("Gulberg Lahore")
+
+
+def test_geocode_not_found(monkeypatch):
+    overpass.geocode.cache_clear()
+
+    def handler(request):
+        if request.url.host == "nominatim.openstreetmap.org":
+            return httpx.Response(200, json=[])
+        return httpx.Response(200, json={"features": []})
+
+    monkeypatch.setattr(overpass, "client", lambda *a, **k: client_for(handler))
+    with pytest.raises(ValueError, match="Could not find"):
+        overpass.geocode("Atlantis")

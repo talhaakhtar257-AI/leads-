@@ -137,3 +137,10 @@ def test_geocode_api(fresh, monkeypatch):
     assert client.get("/api/geocode?q=Gulberg, Lahore").json() == {"lat": 31.5, "lon": 74.3}
     assert client.get("/api/geocode?q=Nowhereville").status_code == 404
     assert client.get("/api/geocode?q=").status_code == 400
+
+
+def test_fresh_setup_does_not_claim_a_pin(fresh):
+    client, _ = fresh
+    page = client.get("/setup").text
+    assert "Centre pinned" not in page and 'data-lat=""' in page
+    assert "My location" in page and 'id="area-suggestions"' in page
