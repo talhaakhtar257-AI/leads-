@@ -9,7 +9,7 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from ..http import client
+from ..http import client, request_with_retry
 
 SEARCH_URL = "https://places.googleapis.com/v1/places:searchText"
 FIELD_MASK = ",".join([
@@ -50,7 +50,7 @@ def discover(location: str, categories: list[str], max_pages: int = 3) -> list[d
         for cat in categories:
             body: dict[str, Any] = {"textQuery": f"{cat.replace('_', ' ')} in {location}", "pageSize": 20}
             for _ in range(max_pages):
-                r = c.post(SEARCH_URL, json=body, headers=headers)
+                r = request_with_retry(c, "POST", SEARCH_URL, json=body, headers=headers)
                 r.raise_for_status()
                 data = r.json()
                 results.extend(parse_places(data, cat))

@@ -34,7 +34,15 @@ def _load(campaign: str, db: str) -> tuple[Campaign, DB]:
     return load_campaign(campaign), DB(db)
 
 
-def _discover(c: Campaign, d: DB, limit: Optional[int]) -> None:
+def _backup(db_path: str) -> None:
+    from .backup import backup_db
+    path = backup_db(db_path)
+    if path:
+        log(f"[dim]Backed up your leads to {path}[/]")
+
+
+def _discover(c: Campaign, d: DB, limit: Optional[int], db_path: str = "leads.db") -> None:
+    _backup(db_path)
     try:
         pipeline.discover(d, c, limit, log)
     except (httpx.HTTPError, ValueError, RuntimeError) as e:
@@ -59,7 +67,7 @@ def init() -> None:
 def run(campaign: str = CampaignOpt, db: str = DbOpt, limit: Optional[int] = LimitOpt) -> None:
     """Full pipeline: discover -> audit -> score -> draft -> export CSV."""
     c, d = _load(campaign, db)
-    _discover(c, d, limit)
+    _discover(c, d, limit, db)
     pipeline.audit(d, c, limit, log=log)
     pipeline.score(d, c, log)
     pipeline.draft(d, c, log=log)
@@ -71,7 +79,7 @@ def run(campaign: str = CampaignOpt, db: str = DbOpt, limit: Optional[int] = Lim
 def discover(campaign: str = CampaignOpt, db: str = DbOpt, limit: Optional[int] = LimitOpt) -> None:
     """Find businesses (OpenStreetMap by default, or Google Places)."""
     c, d = _load(campaign, db)
-    _discover(c, d, limit)
+    _discover(c, d, limit, db)
 
 
 @app.command()
@@ -146,6 +154,8 @@ def send(campaign: str = CampaignOpt, db: str = DbOpt,
     """Send approved emails and due follow-ups (respects the daily cap and suppression list)."""
     from .outreach.email_sender import send_due
     c, d = _load(campaign, db)
+    if not dry_run:
+        _backup(db)
     n = send_due(d, c, dry_run=dry_run, log=log)
     log(f"{'Would send' if dry_run else 'Sent'} {n} email(s).")
 
@@ -240,6 +250,26 @@ def pack(campaign: str = CampaignOpt, db: str = DbOpt,
         log(f"[red]{e}[/]")
         raise typer.Exit(1)
     log(f"[green]Lead pack ready:[/] {path}")
+
+
+@app.command()
+def restore(backup_file: Optional[str] = typer.Argument(None, help="Backup file to restore; omit to list backups"),
+            db: str = DbOpt) -> None:
+    """List automatic backups, or put one back (your current leads are backed up first)."""
+    from .backup import list_backups, restore as do_restore
+    if not backup_file:
+        backups = list_backups(db)
+        if not backups:
+            log("No backups yet. LeadScout makes one before every search and every email send.")
+        for b in backups:
+            log(str(b))
+        return
+    try:
+        safety = do_restore(backup_file, db)
+    except FileNotFoundError as e:
+        log(f"[red]{e}[/]")
+        raise typer.Exit(1)
+    log(f"[green]Restored {backup_file}.[/] Your previous leads were saved to {safety}.")
 
 
 @app.command()

@@ -69,6 +69,12 @@ def discover(db: DB, campaign: Campaign, limit: int | None = None, log: Log = pr
 
 def audit(db: DB, campaign: Campaign, limit: int | None = None, workers: int = 8, log: Log = print) -> int:
     todo = db.businesses(campaign.name, "audited_at IS NULL")[: limit or None]
+    already = db.conn.execute("SELECT COUNT(*) FROM businesses WHERE campaign = ? AND audited_at IS NOT NULL",
+                              (campaign.name,)).fetchone()[0]
+    if already and todo:
+        log(f"{already} leads already checked; continuing with the {len(todo)} remaining.")
+    elif not todo:
+        log("All leads are already checked.")
 
     def work(b: dict) -> tuple[dict, dict | None, str | None]:
         try:

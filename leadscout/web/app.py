@@ -314,6 +314,11 @@ def create_app(campaign_path: str = "campaign.yaml", db_path: str = "leads.db", 
         db_file = root / db_path
 
         def work(job: Job) -> None:
+            if step in ("run", "discover", "send"):
+                from ..backup import backup_db
+                saved = backup_db(db_file)
+                if saved:
+                    job.log(f"Backed up your leads to {saved.name}")
             with DB(db_file) as d:  # own connection: SQLite connections stay on their thread
                 run_step(d, job.log)
 

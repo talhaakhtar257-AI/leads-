@@ -5,12 +5,27 @@ Both are free community services: keep request volume modest.
 """
 from __future__ import annotations
 
+import threading
+import time
+from functools import lru_cache
 from typing import Any
 
-from ..http import client
+import httpx
+
+from ..http import client, request_with_retry
 
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"
+# Public mirrors, tried in order when the main server is busy or down.
+OVERPASS_URLS = [
+    OVERPASS_URL,
+    "https://overpass.kumi.systems/api/interpreter",
+    "https://overpass.private.coffee/api/interpreter",
+]
+
+# Nominatim's usage policy: at most one request per second.
+_nominatim_lock = threading.Lock()
+_nominatim_last = 0.0
 
 # Friendly category name -> OSM tag filters.
 CATEGORY_TAGS: dict[str, list[str]] = {
@@ -52,14 +67,36 @@ def tag_filters(category: str) -> list[str]:
     raise ValueError(f"Unknown category {category!r}. Use one of {sorted(CATEGORY_TAGS)} or a raw OSM tag like shop=tailor")
 
 
+@lru_cache(maxsize=64)
 def geocode(location: str) -> tuple[float, float]:
-    with client() as c:
-        r = c.get(NOMINATIM_URL, params={"q": location, "format": "json", "limit": 1})
-        r.raise_for_status()
-        data = r.json()
+    global _nominatim_last
+    with _nominatim_lock:
+        wait = 1.1 - (time.monotonic() - _nominatim_last)
+        if wait > 0:
+            time.sleep(wait)
+        try:
+            with client() as c:
+                r = request_with_retry(c, "GET", NOMINATIM_URL, params={"q": location, "format": "json", "limit": 1})
+        finally:
+            _nominatim_last = time.monotonic()
+    r.raise_for_status()
+    data = r.json()
     if not data:
-        raise ValueError(f"Could not geocode location {location!r}")
+        raise ValueError(f"Could not find the location {location!r}. Try adding the city and country.")
     return float(data[0]["lat"]), float(data[0]["lon"])
+
+
+def run_query(c: httpx.Client, query: str) -> dict[str, Any]:
+    """Run an Overpass query, falling back to mirrors when a server is overloaded or unreachable."""
+    last: Exception | None = None
+    for url in OVERPASS_URLS:
+        try:
+            r = request_with_retry(c, "POST", url, data={"data": query}, attempts=2)
+            r.raise_for_status()
+            return r.json()
+        except (httpx.HTTPError, ValueError) as e:
+            last = e
+    raise RuntimeError(f"OpenStreetMap search is busy or unreachable right now ({last}). Try again in a few minutes.")
 
 
 def build_query(category: str, lat: float, lon: float, radius_m: int) -> str:
@@ -121,7 +158,6 @@ def discover(location: str, categories: list[str], radius_km: float,
     results: list[dict[str, Any]] = []
     with client(timeout=120) as c:
         for cat in categories:
-            r = c.post(OVERPASS_URL, data={"data": build_query(cat, lat, lon, int(radius_km * 1000))})
-            r.raise_for_status()
-            results.extend(parse_elements(r.json(), cat))
+            data = run_query(c, build_query(cat, lat, lon, int(radius_km * 1000)))
+            results.extend(parse_elements(data, cat))
     return results

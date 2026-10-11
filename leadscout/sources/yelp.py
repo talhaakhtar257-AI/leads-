@@ -9,7 +9,7 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from ..http import client
+from ..http import client, request_with_retry
 
 SEARCH_URL = "https://api.yelp.com/v3/businesses/search"
 
@@ -47,7 +47,7 @@ def discover(lat: float, lon: float, categories: list[str], radius_km: float, ma
             for offset in range(0, max_results, 50):
                 params = {"latitude": lat, "longitude": lon, "radius": int(min(radius_km, 40) * 1000),
                           "term": cat.split("=")[-1].replace("_", " "), "limit": 50, "offset": offset}
-                r = c.get(SEARCH_URL, params=params, headers=headers)
+                r = request_with_retry(c, "GET", SEARCH_URL, params=params, headers=headers)
                 r.raise_for_status()
                 page = parse_businesses(r.json(), cat)
                 results.extend(page)
