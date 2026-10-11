@@ -60,7 +60,8 @@ def init() -> None:
         elif src.exists():
             shutil.copy(src, dst)
             log(f"[green]Created {dst}[/]")
-    log("Edit campaign.yaml (location, categories, service, sender), then run: [bold]leadscout run[/]")
+    log("Next: run [bold]leadscout web[/] and follow the setup wizard, "
+        "or edit campaign.yaml and run [bold]leadscout run[/].")
 
 
 @app.command()
