@@ -78,13 +78,13 @@ def test_lead_status_and_unsubscribe(site):
     assert client.post(f"/leads/{bid}/status", data={"status": "bogus"}).status_code == 400
 
 
-def test_settings_validates_before_saving(site, tmp_path):
+def test_settings_yaml_validates_before_saving(site, tmp_path):
     client, _, _ = site
-    r = client.post("/settings", data={"yaml_text": "name: x\n"})  # missing location/categories
+    r = client.post("/settings/yaml", data={"yaml_text": "name: x\n"})  # missing location/categories
     assert "Not saved" in r.text
     assert "webtest" in (tmp_path / "campaign.yaml").read_text()
     new = CAMPAIGN_YAML.replace("min_score: 30", "min_score: 50")
-    r = client.post("/settings", data={"yaml_text": new}, follow_redirects=False)
+    r = client.post("/settings/yaml", data={"yaml_text": new}, follow_redirects=False)
     assert r.status_code == 303 and "min_score: 50" in (tmp_path / "campaign.yaml").read_text()
 
 

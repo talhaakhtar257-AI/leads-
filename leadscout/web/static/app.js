@@ -76,3 +76,47 @@ jobButtons.forEach((btn) =>
 );
 
 if (jobBox && document.querySelector("[data-job]:disabled")) polling = setInterval(poll, 1000);
+
+// Setup wizard: one step at a time when JavaScript is on (all steps show without it).
+const wizard = document.querySelector("form.wizard");
+if (wizard) {
+  const steps = [...wizard.querySelectorAll(".step")];
+  const back = wizard.querySelector(".js-back");
+  const next = wizard.querySelector(".js-next");
+  const finish = wizard.querySelector(".js-finish");
+  const progress = wizard.querySelector(".js-progress");
+  let i = 0;
+  wizard.classList.add("js");
+  const show = () => {
+    steps.forEach((s, n) => s.classList.toggle("current", n === i));
+    back.hidden = i === 0;
+    next.hidden = i === steps.length - 1;
+    finish.hidden = i !== steps.length - 1;
+    progress.textContent = `Step ${i + 1} of ${steps.length}`;
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+  const stepValid = () => {
+    const step = steps[i];
+    for (const el of step.querySelectorAll("input[required], textarea[required]")) {
+      if (!el.checkValidity()) { el.reportValidity(); return false; }
+    }
+    if (step.querySelector('input[name="categories"]') && !step.querySelector('input[name="categories"]:checked')
+        && !step.querySelector("#extra_categories").value.trim()) {
+      alert("Pick at least one kind of business.");
+      return false;
+    }
+    return true;
+  };
+  next.addEventListener("click", () => { if (stepValid()) { i += 1; show(); } });
+  back.addEventListener("click", () => { i -= 1; show(); });
+  show();
+}
+
+// "Other" message language: show the text box only when it's chosen.
+document.querySelectorAll('select[name="language"]').forEach((sel) => {
+  const other = sel.parentElement.querySelector(".js-language-other");
+  if (!other) return;
+  const sync = () => { other.hidden = sel.value !== "other"; };
+  sel.addEventListener("change", sync);
+  sync();
+});

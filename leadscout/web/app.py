@@ -20,7 +20,8 @@ from ..outreach.whatsapp import wa_link
 from ..reports.audit_page import render_audit_html
 from ..reports.campaign import summarize
 from ..signals import SIGNALS
-from .jobs import STEPS, Job, JobRunner
+from . import forms
+from .jobs import STEP_HELP, STEPS, Job, JobRunner
 from .security import LOCAL_HOSTS, LocalOnlyMiddleware, safe_url, same_site_path
 
 HERE = Path(__file__).parent
@@ -56,7 +57,9 @@ def create_app(campaign_path: str = "campaign.yaml", db_path: str = "leads.db", 
     app.add_middleware(LocalOnlyMiddleware, allowed_hosts=allowed_hosts)
     app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
     templates = Jinja2Templates(directory=HERE / "templates")
-    templates.env.globals.update(SIGNALS=SIGNALS, STEPS=STEPS, STATUSES=STATUSES)
+    templates.env.globals.update(SIGNALS=SIGNALS, STEPS=STEPS, STEP_HELP=STEP_HELP, STATUSES=STATUSES,
+                                 SERVICES=forms.SERVICES, CATEGORY_LABELS=forms.CATEGORY_LABELS,
+                                 SOURCES=forms.SOURCES, LANGUAGES=forms.LANGUAGES)
     templates.env.filters["fromjson"] = json.loads
     templates.env.filters["safe_url"] = safe_url
     runner = JobRunner()
@@ -107,13 +110,15 @@ def create_app(campaign_path: str = "campaign.yaml", db_path: str = "leads.db", 
 
     # ----- pages -----
     @app.get("/", response_class=HTMLResponse)
-    def dashboard(request: Request):
+    def dashboard(request: Request, welcome: int = 0):
         c = campaign(request)
+        if forms.needs_setup(c):  # no campaign yet, or still the example's placeholder sender
+            return RedirectResponse("/setup", status_code=303)
         stats = summarize(db(request), c.name) if c else None
         queue = len(db(request).messages("m.status = 'draft' AND m.step = 0 AND b.campaign = ?", (c.name,))) if c else 0
         wa = len(db(request).messages("m.status = 'approved' AND m.channel = 'whatsapp' AND b.campaign = ?"
                                       f" AND b.status NOT IN {CLOSED}", (c.name,))) if c else 0
-        return page(request, "dashboard.html", stats=stats, review_count=queue, whatsapp_count=wa)
+        return page(request, "dashboard.html", stats=stats, review_count=queue, whatsapp_count=wa, welcome=welcome)
 
     @app.get("/leads", response_class=HTMLResponse)
     def leads(request: Request, min_score: int = 0, status: str = "", q: str = "", new: int = 0):
@@ -167,19 +172,68 @@ def create_app(campaign_path: str = "campaign.yaml", db_path: str = "leads.db", 
             m["wa_link"] = wa_link(m["business_phone"], m["body"], c.country_code)
         return page(request, "whatsapp.html", messages=msgs)
 
+    def form_values(data: dict) -> dict:
+        """Campaign data with defaults filled in, shaped for the form templates."""
+        v = {"name": "", "location": "", "country_code": "", "radius_km": 5, "categories": [],
+             "service": "web_design", "service_pitch": "", "language": "English", "tone": "friendly",
+             "sources": ["overpass"], "llm": "auto", "min_score": 40, "auto_send": False, "pagespeed": False}
+        from ..config import Limits, Sender
+        v["sender"] = Sender().model_dump()
+        v["limits"] = Limits().model_dump()
+        for k, val in data.items():
+            if k in ("sender", "limits") and isinstance(val, dict):
+                v[k] = {**v[k], **{x: y for x, y in val.items() if y is not None}}
+            elif val is not None:
+                v[k] = val
+        if "source" in data and "sources" not in data:
+            v["sources"] = [data["source"]]
+        cats = list(v.get("categories") or [])
+        v["categories"] = [x for x in cats if x in forms.CATEGORY_LABELS]
+        v["extra_categories"] = v.get("extra_categories") or ", ".join(x for x in cats if x not in forms.CATEGORY_LABELS)
+        return v
+
+    def yaml_of(request: Request) -> str:
+        p = campaign_file(request)
+        return p.read_text(encoding="utf-8") if p.exists() else ""
+
+    @app.get("/setup", response_class=HTMLResponse)
+    def setup(request: Request):
+        return page(request, "setup.html", v=form_values(forms.load_raw(campaign_file(request))), errors=[])
+
+    @app.post("/setup", response_class=HTMLResponse)
+    async def save_setup(request: Request):
+        form = await request.form()
+        data = forms.form_to_data(form, forms.load_raw(campaign_file(request)))
+        _, errors = forms.validate(data)
+        if errors:
+            return page(request, "setup.html", v=form_values(data), errors=errors)
+        forms.save_campaign(campaign_file(request), data)
+        return RedirectResponse("/?welcome=1", status_code=303)
+
     @app.get("/settings", response_class=HTMLResponse)
     def settings(request: Request, saved: int = 0):
-        p = campaign_file(request)
-        text = p.read_text(encoding="utf-8") if p.exists() else (root / "campaigns" / "example.yaml").read_text(encoding="utf-8") \
-            if (root / "campaigns" / "example.yaml").exists() else ""
-        return page(request, "settings.html", yaml_text=text, error=None, saved=bool(saved))
+        return page(request, "settings.html", v=form_values(forms.load_raw(campaign_file(request))),
+                    yaml_text=yaml_of(request), errors=[], saved=bool(saved))
 
     @app.post("/settings", response_class=HTMLResponse)
-    def save_settings(request: Request, yaml_text: str = Form(...)):
+    async def save_settings(request: Request):
+        form = await request.form()
+        data = forms.form_to_data(form, forms.load_raw(campaign_file(request)))
+        _, errors = forms.validate(data)
+        if errors:
+            return page(request, "settings.html", v=form_values(data), yaml_text=yaml_of(request),
+                        errors=errors, saved=False)
+        forms.save_campaign(campaign_file(request), data)
+        return RedirectResponse("/settings?saved=1", status_code=303)
+
+    @app.post("/settings/yaml", response_class=HTMLResponse)
+    def save_settings_yaml(request: Request, yaml_text: str = Form(...)):
         try:
             Campaign.model_validate(yaml.safe_load(yaml_text))
         except (yaml.YAMLError, ValidationError, TypeError) as e:
-            return page(request, "settings.html", yaml_text=yaml_text, error=str(e), saved=False)
+            raw = forms.load_raw(campaign_file(request))
+            return page(request, "settings.html", v=form_values(raw), yaml_text=yaml_text,
+                        errors=[f"YAML: {e}"], saved=False)
         campaign_file(request).write_text(yaml_text, encoding="utf-8")
         return RedirectResponse("/settings?saved=1", status_code=303)
 

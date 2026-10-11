@@ -17,7 +17,7 @@
   <div class="key-row">
     <div class="key-info">
       <label for="{{ k.name }}"><strong>{{ k.label }}</strong>
-        <span class="cost {{ k.cost }}">{{ {'free': 'Free', 'free-tier': 'Free tier', 'paid': 'Paid'}[k.cost] }}</span>
+        {% if k.cost %}<span class="cost {{ k.cost }}">{{ {'free': 'Free', 'free-tier': 'Free tier', 'paid': 'Paid'}[k.cost] }}</span>{% endif %}
         {% if it.is_set %}<span class="chip new">Set</span>{% endif %}</label>
       <div class="muted small">{{ k.help }}{% if k.link %} <a href="{{ k.link | safe_url }}" target="_blank" rel="noopener">Get it here</a>{% endif %}</div>
     </div>

@@ -2,16 +2,51 @@
 {% block title %}Settings · LeadScout{% endblock %}
 {% block content %}
 <div class="page-head">
-  <div><h1>Campaign settings</h1><div class="muted">Editing <strong>{{ campaign_file }}</strong>. It's checked before saving.</div></div>
+  <div><h1>Settings</h1><div class="muted">Campaign <strong>{{ v.name }}</strong> · saved in {{ campaign_file }}</div></div>
+  <a class="btn" href="/keys">API keys & email login</a>
 </div>
 {% if saved %}<div class="notice ok">Saved.</div>{% endif %}
-{% if error %}<div class="notice error">Not saved. Please fix this first:
-{{ error }}</div>{% endif %}
-<form method="post" action="/settings" class="card">
-  <textarea class="code" name="yaml_text" spellcheck="false">{{ yaml_text }}</textarea>
-  <div class="row" style="margin-top:10px">
-    <button class="primary" type="submit">Save</button>
-    <span class="muted small">Services: web_design, seo, booking_system, social_media, reputation, maintenance, general_marketing. API keys and email passwords go in the <code>.env</code> file, never here.</span>
-  </div>
+{% if errors %}<div class="notice error">Not saved. Please fix:{% for e in errors %}<br>• {{ e }}{% endfor %}</div>{% endif %}
+<form method="post" action="/settings" novalidate>
+  <input type="hidden" name="advanced" value="1">
+  {% include "_campaign_fields.html" %}
+  <section class="card">
+    <h2>4. More options</h2>
+    <label>Where to find businesses</label>
+    <div class="check-grid sources">
+      {% for key, (label, cost) in SOURCES.items() %}
+      <label class="check"><input type="checkbox" name="sources" value="{{ key }}" {{ 'checked' if key in v.sources }}>
+        {{ label }} <span class="cost {{ cost }}">{{ {'free': 'Free', 'free-tier': 'Free tier, key needed', 'paid': 'Paid'}[cost] }}</span></label>
+      {% endfor %}
+    </div>
+    <div class="form-grid">
+      <div><label for="llm">Message writer</label>
+        <select id="llm" name="llm">
+          {% for val, label in [('auto', 'Automatic (free options only)'), ('template', 'Built-in templates (free, no key)'), ('gemini', 'Google Gemini (free tier)'), ('groq', 'Groq (free tier)'), ('ollama', 'Ollama on this computer (free)'), ('claude', 'Claude (paid)')] %}
+          <option value="{{ val }}" {{ 'selected' if v.llm == val }}>{{ label }}</option>{% endfor %}
+        </select></div>
+      <div><label for="min_score">Only write messages for leads scoring at least</label>
+        <input id="min_score" name="min_score" type="number" min="0" max="100" value="{{ v.min_score }}"></div>
+      <div><label for="daily_emails">Emails per day (keep low on a new Gmail)</label>
+        <input id="daily_emails" name="daily_emails" type="number" min="0" max="500" value="{{ v.limits.daily_emails }}"></div>
+      <div><label for="followup_days">Follow up after (days)</label>
+        <input id="followup_days" name="followup_days" value="{{ v.limits.followup_days | join(', ') }}"></div>
+      <div><label for="name">Campaign name</label>
+        <input id="name" name="name" value="{{ v.name }}">
+        <div class="muted small">Leads are grouped by this name; changing it starts a fresh list.</div></div>
+    </div>
+    <label class="check block"><input type="checkbox" name="pagespeed" value="1" {{ 'checked' if v.pagespeed }}> Check website speed with Google PageSpeed (slower)</label>
+    <label class="check block"><input type="checkbox" name="auto_send" value="1" {{ 'checked' if v.auto_send }}> Approve messages automatically (not recommended)</label>
+  </section>
+  <div class="row"><button class="primary" type="submit">Save settings</button></div>
 </form>
+
+<details class="card" style="margin-top:16px">
+  <summary><strong>Advanced: edit the YAML file directly</strong></summary>
+  <form method="post" action="/settings/yaml" style="margin-top:12px">
+    <textarea class="code" name="yaml_text" spellcheck="false">{{ yaml_text }}</textarea>
+    <div class="row" style="margin-top:10px"><button type="submit">Save YAML</button>
+      <span class="muted small">Checked before saving.</span></div>
+  </form>
+</details>
 {% endblock %}
