@@ -125,3 +125,42 @@ def test_pack_download(site):
     assert r.content[:2] == b"PK"
     assert client.get("/pack.zip?niche=dentist").status_code == 404
     assert "Download a lead pack" in client.get("/leads").text
+
+
+def test_cross_site_posts_are_blocked(site):
+    client, d, bid = site
+    r = client.post("/jobs/score", headers={"Origin": "https://evil.example"})
+    assert r.status_code == 403
+    r = client.post(f"/leads/{bid}/status", data={"status": "won"}, headers={"Referer": "https://evil.example/x"})
+    assert r.status_code == 403 and d.business(bid)["status"] != "won"
+    r = client.post(f"/leads/{bid}/status", data={"status": "won"},
+                    headers={"Origin": "http://testserver"}, follow_redirects=False)
+    assert r.status_code == 303 and d.business(bid)["status"] == "won"
+
+
+def test_unknown_host_is_refused(site):
+    client, _, _ = site
+    assert client.get("/", headers={"Host": "rebind.evil.example"}).status_code == 400
+
+
+def test_javascript_links_are_neutralised(site):
+    client, d, bid = site
+    d.update_business(bid, website="javascript:alert(1)", socials={"facebook": "javascript:alert(2)"})
+    page = client.get(f"/leads/{bid}").text
+    assert 'href="javascript' not in page
+
+
+def test_missing_ids_are_404(site):
+    client, _, _ = site
+    assert client.post("/leads/999/status", data={"status": "won"}).status_code == 404
+    assert client.post("/messages/999", data={"action": "approve"}).status_code == 404
+    assert client.post("/messages/999", data={"action": "whatsapp_sent"}).status_code == 404
+
+
+def test_whatsapp_queue_hides_closed_leads(site):
+    client, d, bid = site
+    wa = d.messages("m.business_id = ? AND m.channel = 'whatsapp'", (bid,))[0]
+    client.post(f"/messages/{wa['id']}", data={"action": "approve"})
+    assert "wa.me" in client.get("/whatsapp").text
+    d.update_business(bid, status="lost")
+    assert "wa.me" not in client.get("/whatsapp").text

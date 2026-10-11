@@ -96,7 +96,6 @@ The dashboard has no login and listens only on your own computer by default. Onl
 A business counts as **recently opened** when any of these is true:
 - OpenStreetMap gives an opening date (`start_date`) in the last 12 months.
 - It was first added to OpenStreetMap in the last 6 months.
-- Google Places shows fewer than 10 reviews.
 
 New owners still need a website, a Google profile and their first reviews, so these leads score higher, and drafts open with a congratulations. Tick **New businesses only** on the dashboard's Leads page to see just them.
 

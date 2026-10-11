@@ -154,7 +154,9 @@ def send(campaign: str = CampaignOpt, db: str = DbOpt,
 def whatsapp(campaign: str = CampaignOpt, db: str = DbOpt) -> None:
     """List approved WhatsApp messages as one-click wa.me links; mark them sent after you send."""
     c, d = _load(campaign, db)
-    msgs = d.messages("m.channel = 'whatsapp' AND m.status = 'approved' AND b.campaign = ?", (c.name,))
+    msgs = [m for m in d.messages("m.channel = 'whatsapp' AND m.status = 'approved' AND b.campaign = ?"
+                                  " AND b.status NOT IN ('replied','won','lost','unsubscribed')", (c.name,))
+            if not d.is_suppressed(m["business_phone"], m["business_email"])]
     if not msgs:
         log("No approved WhatsApp messages.")
         return
@@ -183,6 +185,9 @@ def mark(lead_id: int, status: str = typer.Argument(..., help="replied | won | l
         b = pipeline.set_lead_status(DB(db), lead_id, status)
     except ValueError as e:
         raise typer.BadParameter(str(e))
+    except LookupError as e:
+        log(f"[red]{e}[/]")
+        raise typer.Exit(1)
     log(f"{b['name']} -> {status}")
 
 
@@ -275,7 +280,10 @@ def web(campaign: str = CampaignOpt, db: str = DbOpt,
         import threading
         import webbrowser
         threading.Timer(1.5, webbrowser.open, args=(url,)).start()
-    uvicorn.run(create_app(campaign, db), host=host, port=port, log_level="warning")
+    from .web.security import LOCAL_HOSTS
+    # Listening on all interfaces means the user wants other devices to reach it; otherwise only localhost names.
+    allowed = None if host in ("0.0.0.0", "::") else LOCAL_HOSTS | {host}
+    uvicorn.run(create_app(campaign, db, allowed_hosts=allowed), host=host, port=port, log_level="warning")
 
 
 if __name__ == "__main__":

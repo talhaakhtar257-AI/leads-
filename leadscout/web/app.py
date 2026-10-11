@@ -21,6 +21,7 @@ from ..reports.audit_page import render_audit_html
 from ..reports.campaign import summarize
 from ..signals import SIGNALS
 from .jobs import STEPS, Job, JobRunner
+from .security import LOCAL_HOSTS, LocalOnlyMiddleware, safe_url, same_site_path
 
 HERE = Path(__file__).parent
 STATUSES = ("new", "audited", "drafted", "contacted", "replied", "won", "lost", "unsubscribed")
@@ -32,14 +33,31 @@ def find_campaign_files(root: Path) -> list[str]:
     return [str(p.relative_to(root)) for p in files]
 
 
-def create_app(campaign_path: str = "campaign.yaml", db_path: str = "leads.db", root: str | Path = ".") -> FastAPI:
+# Leads that must not get any more outreach.
+CLOSED = "('replied','won','lost','unsubscribed')"
+
+
+def create_app(campaign_path: str = "campaign.yaml", db_path: str = "leads.db", root: str | Path = ".",
+               allowed_hosts: set[str] | None = LOCAL_HOSTS) -> FastAPI:
     load_dotenv()
     root = Path(root).resolve()
     app = FastAPI(title="LeadScout", docs_url=None, redoc_url=None)
+
+    @app.middleware("http")
+    async def close_db(request: Request, call_next):
+        try:
+            return await call_next(request)
+        finally:
+            d = getattr(request.state, "db", None)
+            if d is not None:
+                d.close()
+
+    app.add_middleware(LocalOnlyMiddleware, allowed_hosts=allowed_hosts)
     app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
     templates = Jinja2Templates(directory=HERE / "templates")
     templates.env.globals.update(SIGNALS=SIGNALS, STEPS=STEPS, STATUSES=STATUSES)
     templates.env.filters["fromjson"] = json.loads
+    templates.env.filters["safe_url"] = safe_url
     runner = JobRunner()
     app.state.runner = runner
 
@@ -58,8 +76,11 @@ def create_app(campaign_path: str = "campaign.yaml", db_path: str = "leads.db", 
         except (ValidationError, yaml.YAMLError, OSError):
             return None
 
-    def db() -> DB:
-        return DB(root / db_path)
+    def db(request: Request) -> DB:
+        """One connection per request, closed by the close_db middleware."""
+        if getattr(request.state, "db", None) is None:
+            request.state.db = DB(root / db_path, check_same_thread=False)
+        return request.state.db
 
     def page(request: Request, name: str, **ctx) -> HTMLResponse:
         c = campaign(request)
@@ -75,22 +96,22 @@ def create_app(campaign_path: str = "campaign.yaml", db_path: str = "leads.db", 
         return c
 
     def get_lead(d: DB, lead_id: int) -> dict:
-        row = d.conn.execute("SELECT 1 FROM businesses WHERE id = ?", (lead_id,)).fetchone()
-        if row is None:
+        b = d.business(lead_id)
+        if b is None:
             raise HTTPException(404, "Lead not found")
-        return d.business(lead_id)
+        return b
 
     def back(request: Request, fallback: str = "/") -> RedirectResponse:
-        ref = request.headers.get("referer") or fallback
-        return RedirectResponse(ref, status_code=303)
+        return RedirectResponse(same_site_path(request.headers.get("referer"), fallback), status_code=303)
 
     # ----- pages -----
     @app.get("/", response_class=HTMLResponse)
     def dashboard(request: Request):
         c = campaign(request)
-        stats = summarize(db(), c.name) if c else None
-        queue = len(db().messages("m.status = 'draft' AND m.step = 0 AND b.campaign = ?", (c.name,))) if c else 0
-        wa = len(db().messages("m.status = 'approved' AND m.channel = 'whatsapp' AND b.campaign = ?", (c.name,))) if c else 0
+        stats = summarize(db(request), c.name) if c else None
+        queue = len(db(request).messages("m.status = 'draft' AND m.step = 0 AND b.campaign = ?", (c.name,))) if c else 0
+        wa = len(db(request).messages("m.status = 'approved' AND m.channel = 'whatsapp' AND b.campaign = ?"
+                                      f" AND b.status NOT IN {CLOSED}", (c.name,))) if c else 0
         return page(request, "dashboard.html", stats=stats, review_count=queue, whatsapp_count=wa)
 
     @app.get("/leads", response_class=HTMLResponse)
@@ -105,7 +126,7 @@ def create_app(campaign_path: str = "campaign.yaml", db_path: str = "leads.db", 
         if q:
             where.append("(name LIKE ? OR address LIKE ? OR category LIKE ?)")
             params += [f"%{q}%"] * 3
-        rows = db().businesses(c.name, " AND ".join(where), params)
+        rows = db(request).businesses(c.name, " AND ".join(where), params)
         points = [{"id": b["id"], "name": b["name"], "score": b["score"], "lat": b["lat"], "lon": b["lon"]}
                   for b in rows if b["lat"] is not None and b["lon"] is not None]
         return page(request, "leads.html", leads=rows, points=points, min_score=min_score, status=status, q=q, new=new)
@@ -113,7 +134,7 @@ def create_app(campaign_path: str = "campaign.yaml", db_path: str = "leads.db", 
     @app.get("/leads/{lead_id}", response_class=HTMLResponse)
     def lead(request: Request, lead_id: int):
         c = require_campaign(request)
-        d = db()
+        d = db(request)
         b = get_lead(d, lead_id)
         msgs = d.messages("m.business_id = ?", (lead_id,))
         for m in msgs:
@@ -124,7 +145,7 @@ def create_app(campaign_path: str = "campaign.yaml", db_path: str = "leads.db", 
     @app.get("/review", response_class=HTMLResponse)
     def review(request: Request):
         c = require_campaign(request)
-        d = db()
+        d = db(request)
         drafts = d.messages("m.status = 'draft' AND m.step = 0 AND b.campaign = ?", (c.name,))
         items = []
         for m in drafts:
@@ -137,7 +158,10 @@ def create_app(campaign_path: str = "campaign.yaml", db_path: str = "leads.db", 
     @app.get("/whatsapp", response_class=HTMLResponse)
     def whatsapp(request: Request):
         c = require_campaign(request)
-        msgs = db().messages("m.channel = 'whatsapp' AND m.status = 'approved' AND b.campaign = ?", (c.name,))
+        d = db(request)
+        msgs = [m for m in d.messages(f"m.channel = 'whatsapp' AND m.status = 'approved' AND b.campaign = ?"
+                                      f" AND b.status NOT IN {CLOSED}", (c.name,))
+                if not d.is_suppressed(m["business_phone"], m["business_email"])]
         for m in msgs:
             m["wa_link"] = wa_link(m["business_phone"], m["body"], c.country_code)
         return page(request, "whatsapp.html", messages=msgs)
@@ -169,42 +193,49 @@ def create_app(campaign_path: str = "campaign.yaml", db_path: str = "leads.db", 
     @app.post("/messages/{msg_id}")
     def update_message(request: Request, msg_id: int, action: str = Form(...),
                        body: str | None = Form(None), subject: str | None = Form(None)):
-        d = db()
-        if action in ("approve", "skip"):
-            pipeline.review_message(d, msg_id, "approved" if action == "approve" else "skipped", body, subject)
-        elif action == "save":
-            fields = {k: v.strip() for k, v in (("body", body), ("subject", subject)) if v and v.strip()}
-            if fields:
-                d.update_message(msg_id, **fields)
-        elif action == "whatsapp_sent":
-            pipeline.mark_whatsapp_sent(d, msg_id)
-        else:
-            raise HTTPException(400, "Unknown action")
+        d = db(request)
+        try:
+            if action in ("approve", "skip"):
+                pipeline.review_message(d, msg_id, "approved" if action == "approve" else "skipped", body, subject)
+            elif action == "save":
+                if not d.messages("m.id = ?", (msg_id,)):
+                    raise LookupError("Message not found")
+                fields = {k: v.strip() for k, v in (("body", body), ("subject", subject)) if v and v.strip()}
+                if fields:
+                    d.update_message(msg_id, **fields)
+            elif action == "whatsapp_sent":
+                pipeline.mark_whatsapp_sent(d, msg_id)
+            else:
+                raise HTTPException(400, "Unknown action")
+        except LookupError as e:
+            raise HTTPException(404, str(e))
         return back(request)
 
     @app.post("/leads/{lead_id}/status")
     def lead_status(request: Request, lead_id: int, status: str = Form(...)):
         try:
-            pipeline.set_lead_status(db(), lead_id, status)
+            pipeline.set_lead_status(db(request), lead_id, status)
         except ValueError as e:
             raise HTTPException(400, str(e))
+        except LookupError as e:
+            raise HTTPException(404, str(e))
         return back(request)
 
     @app.get("/audits/{lead_id}", response_class=HTMLResponse)
     def audit_page(request: Request, lead_id: int):
         c = require_campaign(request)
-        return HTMLResponse(render_audit_html(get_lead(db(), lead_id), c))
+        return HTMLResponse(render_audit_html(get_lead(db(request), lead_id), c))
 
     @app.get("/export.csv")
     def export_csv(request: Request):
         import csv
-        from ..export.csv import COLUMNS, lead_rows
+        from ..export.csv import COLUMNS, lead_rows, safe_rows
         c = require_campaign(request)
         buf = io.StringIO()
         buf.write("﻿")  # Excel-friendly UTF-8
         w = csv.DictWriter(buf, fieldnames=COLUMNS)
         w.writeheader()
-        w.writerows(lead_rows(db(), c))
+        w.writerows(safe_rows(lead_rows(db(request), c)))
         name = quote(f"{c.name}.csv")
         return StreamingResponse(iter([buf.getvalue()]), media_type="text/csv",
                                  headers={"Content-Disposition": f"attachment; filename*=UTF-8''{name}"})
@@ -215,7 +246,7 @@ def create_app(campaign_path: str = "campaign.yaml", db_path: str = "leads.db", 
         from ..export.pack import build_pack
         c = require_campaign(request)
         try:
-            path = build_pack(db(), c, niche or None, min_score, bool(business_emails_only),
+            path = build_pack(db(request), c, niche or None, min_score, bool(business_emails_only),
                               out_dir=root / "output" / "packs")
         except ValueError as e:
             raise HTTPException(404, str(e))
@@ -232,8 +263,10 @@ def create_app(campaign_path: str = "campaign.yaml", db_path: str = "leads.db", 
         db_file = root / db_path
 
         def work(job: Job) -> None:
-            d = DB(db_file)  # own connection: SQLite connections stay on their thread
-            log = job.log
+            with DB(db_file) as d:  # own connection: SQLite connections stay on their thread
+                run_step(d, job.log)
+
+        def run_step(d: DB, log) -> None:
             if step in ("run", "discover"):
                 pipeline.discover(d, c, log=log)
             if step in ("run", "audit"):

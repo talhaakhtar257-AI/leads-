@@ -7,7 +7,7 @@ import os
 
 from ..config import Campaign
 from ..db import DB
-from .csv import COLUMNS, lead_rows
+from .csv import COLUMNS, lead_rows, safe_rows
 
 
 def export_sheet(db: DB, campaign: Campaign, spreadsheet_id: str, worksheet: str | None = None) -> str:
@@ -26,6 +26,6 @@ def export_sheet(db: DB, campaign: Campaign, spreadsheet_id: str, worksheet: str
         ws.clear()
     except gspread.WorksheetNotFound:
         ws = sh.add_worksheet(title=title, rows=1000, cols=len(COLUMNS))
-    values = [COLUMNS] + [["" if r[c] is None else r[c] for c in COLUMNS] for r in lead_rows(db, campaign)]
+    values = [COLUMNS] + [["" if r[c] is None else r[c] for c in COLUMNS] for r in safe_rows(lead_rows(db, campaign))]
     ws.update(values, "A1")
     return sh.url

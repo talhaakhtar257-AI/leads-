@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..config import Campaign
-from ..llm.base import LLM, LLMError, parse_json
+from ..llm.base import LLM, parse_json
 from ..scoring import relevant_signals
 from ..signals import describe
 
@@ -91,6 +91,6 @@ def draft_for(biz: dict[str, Any], campaign: Campaign, llm: LLM | None) -> dict[
             if all(isinstance(out.get(k), str) and out[k].strip() for k in required):
                 out.setdefault("reason", template_reason(findings, campaign.service))
                 return out
-        except (LLMError, ValueError):
+        except Exception:  # LLMError, bad JSON, timeouts, odd response shapes...
             pass  # fall back to the template so a run never fails on one bad LLM reply
     return template_draft(biz, campaign, findings)

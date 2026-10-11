@@ -107,7 +107,13 @@ def send_due(db: DB, campaign: Campaign, dry_run: bool = False,
                 continue
             if sent:
                 sleep(random.uniform(campaign.limits.min_delay_seconds, campaign.limits.max_delay_seconds))
-            sender.send(msg)
+            try:
+                sender.send(msg)
+            except (smtplib.SMTPRecipientsRefused, smtplib.SMTPDataError) as e:
+                # This address is bad; mark it and keep going so one lead can't block the queue.
+                db.update_message(m["id"], status="failed")
+                log(f"Could not send to {m['business_name']} <{to}>: {e}")
+                continue
             sent += 1
             db.update_message(m["id"], status="sent", sent_at=now())
             log(f"Sent step {m['step']} to {m['business_name']} <{to}>")

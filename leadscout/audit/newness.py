@@ -7,7 +7,6 @@ from typing import Any
 
 START_DATE_MONTHS = 12   # an explicit opening date within this window
 NEW_MAP_ENTRY_MONTHS = 6  # first added to OpenStreetMap within this window
-FEW_REVIEWS = 10          # Google Places review count below this
 
 
 def _months_ago(d: date, today: date) -> float:
@@ -44,10 +43,8 @@ def newness_evidence(biz: dict[str, Any], today: date | None = None) -> str | No
             added = None
         if added and _months_ago(added, today) <= NEW_MAP_ENTRY_MONTHS:
             return f"added to OpenStreetMap {added.isoformat()}"
-
-    if biz.get("source") == "google_places" and biz.get("review_count") is not None \
-            and biz["review_count"] < FEW_REVIEWS:
-        return f"only {biz['review_count']} Google reviews so far"
+    # A low review count alone is not evidence: plenty of old shops have few reviews
+    # (that is the separate "few_reviews" signal), and congratulating them on opening is wrong.
     return None
 
 

@@ -18,7 +18,7 @@ from typing import Any
 from ..config import Campaign
 from ..db import DB
 from ..signals import SIGNALS
-from .csv import COLUMNS, lead_rows
+from .csv import COLUMNS, lead_rows, safe_rows
 
 # Your outreach status and pre-written WhatsApp pitch stay private; buyers get the lead data.
 PACK_COLUMNS = [c for c in COLUMNS if c not in ("status", "whatsapp_link")]
@@ -161,6 +161,6 @@ def build_pack(db: DB, campaign: Campaign, niche: str | None = None, min_score: 
     with (folder / "leads.csv").open("w", newline="", encoding="utf-8-sig") as f:
         w = csv.DictWriter(f, fieldnames=PACK_COLUMNS, extrasaction="ignore")
         w.writeheader()
-        w.writerows(rows)
+        w.writerows(safe_rows(rows))
     write_pdf(folder / "report.pdf", campaign, rows, niche, problems, today)
     return Path(shutil.make_archive(str(folder), "zip", root_dir=folder))

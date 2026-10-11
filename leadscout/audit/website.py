@@ -21,6 +21,10 @@ FREE_SUBDOMAINS = ("wixsite.com", "blogspot.com", "wordpress.com", "weebly.com",
 BOOKING_HINTS = ("book now", "book online", "booking", "appointment", "reserve", "reservation", "order online",
                  "order now", "schedule", "calendly", "opentable", "fresha", "setmore", "acuity", "foodpanda",
                  "ubereats", "deliveroo", "talabat", "zomato", "doordash", "add to cart")
+# httpx raises InvalidURL (and idna errors, a UnicodeError subclass) for malformed addresses,
+# which are not HTTPError subclasses; treat them all as "can't load this site".
+FETCH_ERRORS = (httpx.HTTPError, httpx.InvalidURL, ValueError, UnicodeError)
+
 COPYRIGHT_RE = re.compile(r"(?:©|&copy;|copyright)\s*(?:\d{4}\s*[-–]\s*)?((?:19|20)\d{2})", re.I)
 
 
@@ -121,7 +125,7 @@ def audit_business(biz: dict[str, Any], use_pagespeed: bool = False) -> dict[str
                                     found["socials"].setdefault(k, v)
                                 if "<form" in sub.text.lower():
                                     pages_with_forms += 1
-                        except httpx.HTTPError:
+                        except FETCH_ERRORS:
                             pass
                     if pages_with_forms == 0:
                         signals.append("no_contact_form")
@@ -133,7 +137,7 @@ def audit_business(biz: dict[str, Any], use_pagespeed: bool = False) -> dict[str
                         signals.append("no_social_links")
                     if details["load_seconds"] > 4:
                         signals.append("slow_site")
-        except httpx.HTTPError as e:
+        except FETCH_ERRORS as e:
             signals.append("site_down")
             details["error"] = type(e).__name__
 

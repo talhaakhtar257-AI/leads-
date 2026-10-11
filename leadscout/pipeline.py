@@ -70,13 +70,23 @@ def discover(db: DB, campaign: Campaign, limit: int | None = None, log: Log = pr
 def audit(db: DB, campaign: Campaign, limit: int | None = None, workers: int = 8, log: Log = print) -> int:
     todo = db.businesses(campaign.name, "audited_at IS NULL")[: limit or None]
 
-    def work(b: dict) -> tuple[dict, dict]:
-        return b, audit_business(b, use_pagespeed=campaign.pagespeed)
+    def work(b: dict) -> tuple[dict, dict | None, str | None]:
+        try:
+            return b, audit_business(b, use_pagespeed=campaign.pagespeed), None
+        except Exception as e:  # one broken website must not stop the whole run
+            return b, None, f"{type(e).__name__}: {e}"
 
     done = 0
     with ThreadPoolExecutor(max_workers=workers) as pool:
         for fut in as_completed([pool.submit(work, b) for b in todo]):
-            b, res = fut.result()
+            b, res, error = fut.result()
+            if res is None:
+                # Mark it audited with the error, so later runs don't retry (and fail on) it forever.
+                db.update_business(b["id"], audit={"error": error}, audited_at=now(),
+                                   status="audited" if b["status"] == "new" else b["status"])
+                done += 1
+                log(f"[{done}/{len(todo)}] {b['name']}: could not audit ({error})")
+                continue
             email = res["email"] if res["email"] and verify(res["email"]) else None
             signals = res["signals"]
             if res["email"] and not email and "no_email_found" not in signals and "no_website" not in signals:
@@ -137,7 +147,10 @@ def review_message(db: DB, msg_id: int, status: str, body: str | None = None, su
     """Approve or skip a first-touch draft; its follow-ups on the same channel follow along."""
     if status not in ("approved", "skipped"):
         raise ValueError("status must be approved or skipped")
-    m = db.messages("m.id = ?", (msg_id,))[0]
+    found = db.messages("m.id = ?", (msg_id,))
+    if not found:
+        raise LookupError(f"No message with id {msg_id}")
+    m = found[0]
     fields: dict = {"status": status}
     if body is not None and body.strip():
         fields["body"] = body.strip()
@@ -151,13 +164,15 @@ def review_message(db: DB, msg_id: int, status: str, body: str | None = None, su
 
 
 def set_lead_status(db: DB, lead_id: int, status: str) -> dict:
-    from .outreach.followups import cancel_followups
+    from .outreach.followups import cancel_pending
     if status not in LEAD_STATUSES:
         raise ValueError(f"status must be one of {', '.join(LEAD_STATUSES)}")
     b = db.business(lead_id)
+    if b is None:
+        raise LookupError(f"No lead with id {lead_id}")
     db.update_business(lead_id, status=status)
     if status != "contacted":
-        cancel_followups(db, lead_id)
+        cancel_pending(db, lead_id)
     if status == "unsubscribed":
         for v in (b["email"], b["phone"]):
             if v:
@@ -166,7 +181,10 @@ def set_lead_status(db: DB, lead_id: int, status: str) -> dict:
 
 
 def mark_whatsapp_sent(db: DB, msg_id: int) -> None:
-    m = db.messages("m.id = ? AND m.channel = 'whatsapp'", (msg_id,))[0]
+    found = db.messages("m.id = ? AND m.channel = 'whatsapp'", (msg_id,))
+    if not found:
+        raise LookupError(f"No WhatsApp message with id {msg_id}")
+    m = found[0]
     db.update_message(msg_id, status="sent", sent_at=now())
     if m["business_status"] in ("drafted", "audited"):
         db.update_business(m["business_id"], status="contacted")

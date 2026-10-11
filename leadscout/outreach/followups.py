@@ -4,6 +4,7 @@ from __future__ import annotations
 import email
 import imaplib
 import os
+import re
 from datetime import datetime, timedelta
 from email.header import decode_header, make_header
 from typing import Callable
@@ -13,12 +14,34 @@ from ..db import DB
 UNSUB_WORDS = ("unsubscribe", "remove me", "not interested", "don't contact", "do not contact")
 
 
-def cancel_followups(db: DB, business_id: int) -> None:
+def cancel_pending(db: DB, business_id: int) -> None:
+    """Cancel everything not yet sent to this lead: follow-ups and unsent first messages, on every channel."""
     db.conn.execute(
-        "UPDATE messages SET status = 'cancelled' WHERE business_id = ? AND step > 0 AND status IN ('approved','scheduled','draft')",
+        "UPDATE messages SET status = 'cancelled' WHERE business_id = ? AND status IN ('approved','scheduled','draft')",
         (business_id,),
     )
     db.conn.commit()
+
+
+cancel_followups = cancel_pending  # older name
+
+# A line that starts the quoted original in common mail clients (Gmail in several languages, Outlook, Apple Mail).
+QUOTE_START = re.compile(
+    r"^\s*(>|-{2,}\s*original message|_{10,}|from:\s|sent:\s|-- ?$)"
+    r"|(wrote|schrieb|a écrit|escribió|scritto|schreef|написал)\s*:\s*$"
+    r'|not interested\? reply "unsubscribe"',
+    re.IGNORECASE,
+)
+
+
+def strip_quoted(body: str) -> str:
+    """Keep only what the lead wrote, dropping the quoted original (which contains our own footer)."""
+    kept = []
+    for line in body.splitlines():
+        if QUOTE_START.search(line):
+            break
+        kept.append(line)
+    return "\n".join(kept).strip()
 
 
 def is_unsubscribe(text: str) -> bool:
@@ -36,13 +59,11 @@ def _text_of(msg: email.message.Message) -> str:
         if part.get_content_type() == "text/plain":
             payload = part.get_payload(decode=True) or b""
             parts.append(payload.decode(part.get_content_charset() or "utf-8", "replace"))
-    # Only the top of the reply matters; quoted original text contains our own footer.
-    body = "\n".join(parts).split("\nOn ")[0].split("\n>")[0]
-    return f"{subject}\n{body[:2000]}"
+    return f"{subject}\n{strip_quoted(chr(10).join(parts))[:2000]}"
 
 
 def record_reply(db: DB, business_id: int, from_addr: str, text: str) -> str:
-    cancel_followups(db, business_id)
+    cancel_pending(db, business_id)
     if is_unsubscribe(text):
         db.suppress(from_addr, "unsubscribed")
         db.update_business(business_id, status="unsubscribed")
