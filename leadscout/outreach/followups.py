@@ -25,8 +25,6 @@ def cancel_pending(db: DB, business_id: int) -> None:
     db.conn.commit()
 
 
-cancel_followups = cancel_pending  # older name
-
 # A line that starts the quoted original in common mail clients (Gmail in several languages, Outlook, Apple Mail).
 QUOTE_START = re.compile(
     r"^\s*(>|-{2,}\s*original message|_{10,}|from:\s|sent:\s|-- ?$)"

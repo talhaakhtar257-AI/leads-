@@ -5,6 +5,7 @@
   <div><h1>Welcome to LeadScout</h1>
   <div class="muted">Three quick questions and you're ready to find your first leads. You can change everything later in Settings.</div></div>
 </div>
+{% if broken %}<div class="notice error">Your current campaign file has a problem ({{ broken }}). Saving this wizard will replace it. To keep it, fix it in <a href="/settings">Settings → Advanced</a> instead.</div>{% endif %}
 {% if errors %}<div class="notice error">Please fix:{% for e in errors %}<br>• {{ e }}{% endfor %}</div>{% endif %}
 <form method="post" action="/setup" class="wizard" novalidate>
   {% include "_campaign_fields.html" %}

@@ -5,6 +5,7 @@ Both are free community services: keep request volume modest.
 """
 from __future__ import annotations
 
+import re
 import threading
 import time
 from functools import lru_cache
@@ -62,8 +63,10 @@ def tag_filters(category: str) -> list[str]:
     if category in CATEGORY_TAGS:
         return CATEGORY_TAGS[category]
     if "=" in category:
-        k, v = category.split("=", 1)
-        return [f'"{k.strip()}"="{v.strip()}"']
+        k, v = (x.strip() for x in category.split("=", 1))
+        if not re.fullmatch(r"[\w:.-]+", k) or not re.fullmatch(r"[\w:. -]+", v):
+            raise ValueError(f"The custom business type {category!r} isn't valid. Use key=value, e.g. shop=tailor.")
+        return [f'"{k}"="{v}"']
     raise ValueError(f"Unknown category {category!r}. Use one of {sorted(CATEGORY_TAGS)} or a raw OSM tag like shop=tailor")
 
 
@@ -89,12 +92,17 @@ def geocode(location: str) -> tuple[float, float]:
 def run_query(c: httpx.Client, query: str) -> dict[str, Any]:
     """Run an Overpass query, falling back to mirrors when a server is overloaded or unreachable."""
     last: Exception | None = None
-    for url in OVERPASS_URLS:
+    for i, url in enumerate(OVERPASS_URLS):
         try:
-            r = request_with_retry(c, "POST", url, data={"data": query}, attempts=2)
+            r = request_with_retry(c, "POST", url, data={"data": query}, attempts=2 if i == 0 else 1)
+            if r.status_code == 400:  # our query is wrong (e.g. a typo in a custom tag); mirrors won't help
+                raise ValueError("OpenStreetMap could not understand the search. Check the custom business "
+                                 "types under 'Other kinds' (format: key=value, e.g. shop=tailor).")
             r.raise_for_status()
             return r.json()
-        except (httpx.HTTPError, ValueError) as e:
+        except ValueError:
+            raise
+        except httpx.HTTPError as e:
             last = e
     raise RuntimeError(f"OpenStreetMap search is busy or unreachable right now ({last}). Try again in a few minutes.")
 
@@ -156,7 +164,7 @@ def discover(location: str, categories: list[str], radius_km: float,
              center: tuple[float, float] | None = None) -> list[dict[str, Any]]:
     lat, lon = center or geocode(location)
     results: list[dict[str, Any]] = []
-    with client(timeout=120) as c:
+    with client(timeout=100) as c:
         for cat in categories:
             data = run_query(c, build_query(cat, lat, lon, int(radius_km * 1000)))
             results.extend(parse_elements(data, cat))

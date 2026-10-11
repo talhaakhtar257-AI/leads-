@@ -53,10 +53,22 @@ def _slug(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")[:40] or "campaign"
 
 
-def form_to_data(form, existing: dict[str, Any] | None) -> dict[str, Any]:
-    """Build campaign data from a submitted form, keeping existing values for fields the form doesn't show."""
+def form_to_data(form, existing: dict[str, Any] | None) -> tuple[dict[str, Any], list[str]]:
+    """Build campaign data from a submitted form, keeping existing values for fields the form doesn't show.
+
+    Returns (data, problems) where problems are readable messages for values that couldn't be read.
+    """
     data: dict[str, Any] = dict(existing or {})
+    problems: list[str] = []
     get = lambda k, d="": (form.get(k) or d).strip()  # noqa: E731
+
+    def number(key: str, default, cast, label: str):
+        raw = get(key, str(default)) or str(default)
+        try:
+            return cast(float(raw)) if cast is int and float(raw).is_integer() else cast(raw)
+        except ValueError:
+            problems.append(f"{label}: '{raw}' is not a number.")
+            return default
 
     categories = [c for c in form.getlist("categories") if c in CATEGORY_TAGS]
     categories += [x.strip() for x in get("extra_categories").split(",") if x.strip()]
@@ -70,7 +82,7 @@ def form_to_data(form, existing: dict[str, Any] | None) -> dict[str, Any]:
         "name": get("name") or data.get("name") or f"{_slug(location.split(',')[0])}-{service.replace('_', '-')}",
         "location": location,
         "country_code": re.sub(r"\D", "", get("country_code")),
-        "radius_km": float(get("radius_km", "5") or 5),
+        "radius_km": number("radius_km", 5, float, "Distance"),
         "categories": categories,
         "service": service,
         "service_pitch": get("service_pitch") or Campaign.model_fields["service_pitch"].default,
@@ -85,15 +97,15 @@ def form_to_data(form, existing: dict[str, Any] | None) -> dict[str, Any]:
     if form.get("advanced"):
         data["sources"] = [s for s in form.getlist("sources") if s in SOURCES] or ["overpass"]
         data["llm"] = get("llm", "auto")
-        data["min_score"] = int(get("min_score", "40") or 40)
+        data["min_score"] = number("min_score", 40, int, "Minimum score")
         data["auto_send"] = bool(form.get("auto_send"))
         data["pagespeed"] = bool(form.get("pagespeed"))
         limits = dict(data.get("limits") or {})
-        limits["daily_emails"] = int(get("daily_emails", "30") or 30)
+        limits["daily_emails"] = number("daily_emails", 30, int, "Emails per day")
         days = [int(d) for d in re.findall(r"\d+", get("followup_days", "3, 7"))]
         limits["followup_days"] = days or [3, 7]
         data["limits"] = limits
-    return data
+    return data, problems
 
 
 def friendly_errors(e: ValidationError) -> list[str]:
@@ -116,8 +128,13 @@ def validate(data: dict[str, Any]) -> tuple[Campaign | None, list[str]]:
         errors.append("Location: tell LeadScout where to search, e.g. 'Gulberg, Lahore, Pakistan'.")
     if not data.get("categories"):
         errors.append("Business types: pick at least one.")
-    if not (data.get("sender") or {}).get("name"):
+    sender = data.get("sender") or {}
+    if not sender.get("name"):
         errors.append("Your name: needed to sign your messages.")
+    if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", sender.get("email") or ""):
+        errors.append("Email: needed as the sender address of your messages.")
+    if not (sender.get("address") or "").strip():
+        errors.append("Postal address: anti-spam laws require it in sales emails.")
     if errors:
         return None, errors
     try:

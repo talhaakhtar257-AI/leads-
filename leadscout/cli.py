@@ -165,9 +165,7 @@ def send(campaign: str = CampaignOpt, db: str = DbOpt,
 def whatsapp(campaign: str = CampaignOpt, db: str = DbOpt) -> None:
     """List approved WhatsApp messages as one-click wa.me links; mark them sent after you send."""
     c, d = _load(campaign, db)
-    msgs = [m for m in d.messages("m.channel = 'whatsapp' AND m.status = 'approved' AND b.campaign = ?"
-                                  " AND b.status NOT IN ('replied','won','lost','unsubscribed')", (c.name,))
-            if not d.is_suppressed(m["business_phone"], m["business_email"])]
+    msgs = pipeline.whatsapp_queue(d, c.name)
     if not msgs:
         log("No approved WhatsApp messages.")
         return

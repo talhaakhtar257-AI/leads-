@@ -20,8 +20,8 @@
   <label for="location">Area</label>
   <input id="location" name="location" value="{{ v.location }}" required placeholder="Gulberg, Lahore, Pakistan" class="wide">
   <div class="muted small">A neighbourhood, city and country works best.</div>
-  <label for="radius_km">Distance around it: <output id="radius_out">{{ v.radius_km | int }}</output> km</label>
-  <input id="radius_km" name="radius_km" type="range" min="1" max="20" step="1" value="{{ v.radius_km | int }}"
+  <label for="radius_km">Distance around it: <output id="radius_out">{{ '%g' % v.radius_km }}</output> km</label>
+  <input id="radius_km" name="radius_km" type="range" min="0.5" max="{{ [50, v.radius_km] | max }}" step="0.5" value="{{ v.radius_km }}"
          oninput="document.getElementById('radius_out').value = this.value" class="wide">
   <label>Kinds of business</label>
   <div class="check-grid">
@@ -42,10 +42,10 @@
   <div class="form-grid">
     <div><label for="sender_name">Your name</label><input id="sender_name" name="sender_name" value="{{ v.sender.name if v.sender.name != 'Your Name' }}" required></div>
     <div><label for="sender_company">Business name</label><input id="sender_company" name="sender_company" value="{{ v.sender.company if v.sender.company != 'Your Agency' }}"></div>
-    <div><label for="sender_email">Email</label><input id="sender_email" name="sender_email" type="email" value="{{ v.sender.email if v.sender.email != 'you@example.com' }}"></div>
+    <div><label for="sender_email">Email</label><input id="sender_email" name="sender_email" type="email" required value="{{ v.sender.email if v.sender.email != 'you@example.com' }}"></div>
     <div><label for="sender_phone">Phone</label><input id="sender_phone" name="sender_phone" value="{{ v.sender.phone }}"></div>
     <div><label for="sender_website">Website (optional)</label><input id="sender_website" name="sender_website" value="{{ v.sender.website }}"></div>
-    <div><label for="sender_address">Postal address</label><input id="sender_address" name="sender_address" value="{{ v.sender.address if 'Your street' not in v.sender.address }}"></div>
+    <div><label for="sender_address">Postal address</label><input id="sender_address" name="sender_address" required value="{{ v.sender.address if 'Your street' not in v.sender.address }}"></div>
   </div>
   <div class="form-grid">
     <div>

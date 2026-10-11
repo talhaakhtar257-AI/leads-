@@ -6,7 +6,7 @@
   <a class="btn" href="/keys">API keys & email login</a>
 </div>
 {% if saved %}<div class="notice ok">Saved.</div>{% endif %}
-{% if errors %}<div class="notice error">Not saved. Please fix:{% for e in errors %}<br>• {{ e }}{% endfor %}</div>{% endif %}
+{% if errors %}<div class="notice error">{{ 'Please note:' if broken and not saved else 'Not saved. Please fix:' }}{% for e in errors %}<br>• {{ e }}{% endfor %}</div>{% endif %}
 <form method="post" action="/settings" novalidate>
   <input type="hidden" name="advanced" value="1">
   {% include "_campaign_fields.html" %}
@@ -41,7 +41,7 @@
   <div class="row"><button class="primary" type="submit">Save settings</button></div>
 </form>
 
-<details class="card" style="margin-top:16px">
+<details class="card" style="margin-top:16px" {{ 'open' if broken }}>
   <summary><strong>Advanced: edit the YAML file directly</strong></summary>
   <form method="post" action="/settings/yaml" style="margin-top:12px">
     <textarea class="code" name="yaml_text" spellcheck="false">{{ yaml_text }}</textarea>

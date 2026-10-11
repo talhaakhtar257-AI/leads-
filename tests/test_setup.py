@@ -52,7 +52,7 @@ def test_wizard_explains_missing_fields(fresh):
 
 def test_placeholder_example_campaign_still_needs_setup(fresh):
     client, root = fresh
-    (root / "campaign.yaml").write_text("name: x\\nlocation: L\\ncategories: [cafe]\\nsender: {name: Your Name}\\n")
+    (root / "campaign.yaml").write_text("name: x\nlocation: L\ncategories: [cafe]\nsender: {name: Your Name}\n")
     assert client.get("/", follow_redirects=False).headers["location"] == "/setup"
     assert 'value=""' in client.get("/setup").text.split('id="sender_name"')[1][:40]
 
@@ -74,3 +74,30 @@ def test_settings_form_keeps_fields_it_does_not_show(fresh):
     assert c.limits.daily_emails == 20 and c.limits.followup_days == [2, 5, 9]
     assert c.limits.min_delay_seconds == 99  # kept
     assert c.name == "karachi-salons"
+
+
+def test_broken_campaign_file_is_not_silently_replaced(fresh):
+    client, root = fresh
+    (root / "campaign.yaml").write_text("name: x\nlocation: [unclosed\n")
+    r = client.get("/", follow_redirects=False)
+    assert r.status_code == 200 and "No valid campaign" in r.text  # warned, not redirected
+    assert "has a problem" in client.get("/settings").text
+    assert "Saving this wizard will replace it" in client.get("/setup").text
+
+
+def test_bad_numbers_and_missing_sender_details_are_form_errors(fresh):
+    client, root = fresh
+    client.post("/setup", data=WIZARD)
+    form = {**WIZARD, "advanced": "1", "min_score": "forty", "daily_emails": "20", "sources": ["overpass"]}
+    page = client.post("/settings", data=form).text
+    assert "Minimum score: &#39;forty&#39; is not a number." in page
+    page = client.post("/setup", data={**WIZARD, "sender_email": "", "sender_address": ""}).text
+    assert "Email: needed" in page and "Postal address" in page
+
+
+def test_fractional_and_large_radius_survive_settings(fresh):
+    client, root = fresh
+    client.post("/setup", data={**WIZARD, "radius_km": "2.5"})
+    assert load_campaign(root / "campaign.yaml").radius_km == 2.5
+    page = client.get("/settings").text
+    assert 'value="2.5"' in page

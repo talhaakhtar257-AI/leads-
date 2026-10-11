@@ -11,7 +11,6 @@ LANGUAGE_CODES = {
     "urdu": "ur", "ur": "ur", "اردو": "ur",
     "roman urdu": "roman", "roman-urdu": "roman", "romanurdu": "roman", "roman": "roman",
 }
-LANGUAGE_NAMES = {"en": "English", "ur": "Urdu (اردو)", "roman": "Roman Urdu"}
 
 
 def language_code(language: str | None) -> str | None:

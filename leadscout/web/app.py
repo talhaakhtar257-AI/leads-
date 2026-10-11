@@ -34,10 +34,6 @@ def find_campaign_files(root: Path) -> list[str]:
     return [str(p.relative_to(root)) for p in files]
 
 
-# Leads that must not get any more outreach.
-CLOSED = "('replied','won','lost','unsubscribed')"
-
-
 def create_app(campaign_path: str = "campaign.yaml", db_path: str = "leads.db", root: str | Path = ".",
                allowed_hosts: set[str] | None = LOCAL_HOSTS) -> FastAPI:
     root = Path(root).resolve()
@@ -73,11 +69,22 @@ def create_app(campaign_path: str = "campaign.yaml", db_path: str = "leads.db", 
             chosen = campaign_path
         return root / chosen
 
+    def campaign_problem(request: Request) -> str | None:
+        """Why an existing campaign file can't be used, or None."""
+        p = campaign_file(request)
+        if not p.exists():
+            return None
+        try:
+            load_campaign(p)
+        except (ValidationError, yaml.YAMLError, OSError, TypeError) as e:
+            return str(e).splitlines()[0] if str(e) else type(e).__name__
+        return None
+
     def campaign(request: Request) -> Campaign | None:
         p = campaign_file(request)
         try:
             return load_campaign(p) if p.exists() else None
-        except (ValidationError, yaml.YAMLError, OSError):
+        except (ValidationError, yaml.YAMLError, OSError, TypeError):
             return None
 
     def db(request: Request) -> DB:
@@ -112,12 +119,12 @@ def create_app(campaign_path: str = "campaign.yaml", db_path: str = "leads.db", 
     @app.get("/", response_class=HTMLResponse)
     def dashboard(request: Request, welcome: int = 0):
         c = campaign(request)
-        if forms.needs_setup(c):  # no campaign yet, or still the example's placeholder sender
+        broken = campaign_problem(request)
+        if forms.needs_setup(c) and not broken:  # no campaign yet, or still the example's placeholder sender
             return RedirectResponse("/setup", status_code=303)
         stats = summarize(db(request), c.name) if c else None
         queue = len(db(request).messages("m.status = 'draft' AND m.step = 0 AND b.campaign = ?", (c.name,))) if c else 0
-        wa = len(db(request).messages("m.status = 'approved' AND m.channel = 'whatsapp' AND b.campaign = ?"
-                                      f" AND b.status NOT IN {CLOSED}", (c.name,))) if c else 0
+        wa = len(pipeline.whatsapp_queue(db(request), c.name)) if c else 0
         return page(request, "dashboard.html", stats=stats, review_count=queue, whatsapp_count=wa, welcome=welcome)
 
     @app.get("/leads", response_class=HTMLResponse)
@@ -164,10 +171,7 @@ def create_app(campaign_path: str = "campaign.yaml", db_path: str = "leads.db", 
     @app.get("/whatsapp", response_class=HTMLResponse)
     def whatsapp(request: Request):
         c = require_campaign(request)
-        d = db(request)
-        msgs = [m for m in d.messages(f"m.channel = 'whatsapp' AND m.status = 'approved' AND b.campaign = ?"
-                                      f" AND b.status NOT IN {CLOSED}", (c.name,))
-                if not d.is_suppressed(m["business_phone"], m["business_email"])]
+        msgs = pipeline.whatsapp_queue(db(request), c.name)
         for m in msgs:
             m["wa_link"] = wa_link(m["business_phone"], m["body"], c.country_code)
         return page(request, "whatsapp.html", messages=msgs)
@@ -198,13 +202,15 @@ def create_app(campaign_path: str = "campaign.yaml", db_path: str = "leads.db", 
 
     @app.get("/setup", response_class=HTMLResponse)
     def setup(request: Request):
-        return page(request, "setup.html", v=form_values(forms.load_raw(campaign_file(request))), errors=[])
+        return page(request, "setup.html", v=form_values(forms.load_raw(campaign_file(request))), errors=[],
+                    broken=campaign_problem(request))
 
     @app.post("/setup", response_class=HTMLResponse)
     async def save_setup(request: Request):
         form = await request.form()
-        data = forms.form_to_data(form, forms.load_raw(campaign_file(request)))
+        data, problems = forms.form_to_data(form, forms.load_raw(campaign_file(request)))
         _, errors = forms.validate(data)
+        errors = problems + errors
         if errors:
             return page(request, "setup.html", v=form_values(data), errors=errors)
         forms.save_campaign(campaign_file(request), data)
@@ -212,14 +218,18 @@ def create_app(campaign_path: str = "campaign.yaml", db_path: str = "leads.db", 
 
     @app.get("/settings", response_class=HTMLResponse)
     def settings(request: Request, saved: int = 0):
+        broken = campaign_problem(request)
+        errors = [f"Your campaign file has a problem: {broken}. Fix it in the YAML editor at the bottom, "
+                  "or fill in this form to replace it."] if broken else []
         return page(request, "settings.html", v=form_values(forms.load_raw(campaign_file(request))),
-                    yaml_text=yaml_of(request), errors=[], saved=bool(saved))
+                    yaml_text=yaml_of(request), errors=errors, saved=bool(saved), broken=broken)
 
     @app.post("/settings", response_class=HTMLResponse)
     async def save_settings(request: Request):
         form = await request.form()
-        data = forms.form_to_data(form, forms.load_raw(campaign_file(request)))
+        data, problems = forms.form_to_data(form, forms.load_raw(campaign_file(request)))
         _, errors = forms.validate(data)
+        errors = problems + errors
         if errors:
             return page(request, "settings.html", v=form_values(data), yaml_text=yaml_of(request),
                         errors=errors, saved=False)
@@ -290,8 +300,11 @@ def create_app(campaign_path: str = "campaign.yaml", db_path: str = "leads.db", 
         v = read_env(env_path)
         if not v.get("SMTP_USER") or not v.get("SMTP_PASSWORD"):
             return RedirectResponse("/keys?test=" + q("Add your Gmail address and app password first."), 303)
+        port = v.get("SMTP_PORT") or "587"
+        if not port.isdigit():
+            return RedirectResponse("/keys?test=" + q(f"Mail server port must be a number, not '{port}'."), 303)
         error = await run_in_threadpool(test_smtp_login, v.get("SMTP_HOST") or "smtp.gmail.com",
-                                        int(v.get("SMTP_PORT") or 587), v["SMTP_USER"], v["SMTP_PASSWORD"])
+                                        int(port), v["SMTP_USER"], v["SMTP_PASSWORD"])
         return RedirectResponse("/keys?test=" + q(error or "ok"), 303)
 
     # ----- actions -----

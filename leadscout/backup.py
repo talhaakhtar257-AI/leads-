@@ -1,6 +1,7 @@
 """Automatic backups of the leads database, so a mistake or crash never loses your leads."""
 from __future__ import annotations
 
+import re
 import sqlite3
 from datetime import datetime
 from pathlib import Path
@@ -36,7 +37,10 @@ def backup_db(db_path: str | Path, keep: int = KEEP) -> Path | None:
 def list_backups(db_path: str | Path) -> list[Path]:
     """Newest first."""
     folder = backup_dir(db_path)
-    return sorted(folder.glob(f"{Path(db_path).stem}-*.db"), reverse=True) if folder.exists() else []
+    if not folder.exists():
+        return []
+    pattern = re.compile(rf"^{re.escape(Path(db_path).stem)}-\d{{8}}-\d{{6}}-\d{{6}}\.db$")
+    return sorted((p for p in folder.iterdir() if pattern.match(p.name)), reverse=True)
 
 
 def restore(backup_file: str | Path, db_path: str | Path) -> Path | None:

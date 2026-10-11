@@ -151,6 +151,15 @@ def draft(db: DB, campaign: Campaign, limit: int | None = None, log: Log = print
 # ---------- shared actions (used by the CLI and the web dashboard) ----------
 
 LEAD_STATUSES = ("contacted", "replied", "won", "lost", "unsubscribed")
+CLOSED_STATUSES = ("replied", "won", "lost", "unsubscribed")
+
+
+def whatsapp_queue(db: DB, campaign_name: str) -> list[dict]:
+    """Approved WhatsApp messages that may still be sent: open leads that haven't opted out."""
+    marks = ",".join("?" for _ in CLOSED_STATUSES)
+    return [m for m in db.messages(f"m.channel = 'whatsapp' AND m.status = 'approved' AND b.campaign = ?"
+                                   f" AND b.status NOT IN ({marks})", (campaign_name, *CLOSED_STATUSES))
+            if not db.is_suppressed(m["business_phone"], m["business_email"])]
 
 
 def review_message(db: DB, msg_id: int, status: str, body: str | None = None, subject: str | None = None) -> None:

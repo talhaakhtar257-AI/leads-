@@ -151,3 +151,62 @@ def test_one_rejected_address_does_not_block_queue(db, campaign, tmp_path, monke
     assert sent == ["good@y.pk"]
     statuses = {m["business_email"]: m["status"] for m in db.messages("m.channel = 'email' AND m.step = 0")}
     assert statuses == {"bad@x.pk": "failed", "good@y.pk": "sent"}
+
+
+def test_old_suppression_rows_are_normalized(tmp_path):
+    import sqlite3
+    from leadscout.db import DB
+    path = tmp_path / "old.db"
+    DB(path).close()
+    con = sqlite3.connect(path)
+    con.execute("INSERT INTO suppression VALUES ('+92 300 1234567', 'unsubscribed', 'x')")  # stored the old way
+    con.commit()
+    con.close()
+    d = DB(path)
+    assert d.is_suppressed("0300-1234567")
+
+
+def test_name_key_matches_keys_from_older_versions():
+    from leadscout.db import name_key
+    assert name_key("Cafe X", "Main St, Lahore") == "cafexmainstlahore"
+
+
+def test_temporary_or_account_smtp_errors_stop_without_failing_messages(db, campaign, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    campaign.llm = "template"
+    for i in range(3):
+        bid = db.insert_business(campaign.name, {"name": f"Lead {i}", "phone": f"0300 000000{i}"})
+        db.update_business(bid, email=f"l{i}@x.pk", signals=["no_website"], score=60, status="audited",
+                           audited_at=now())
+    pipeline.draft(db, campaign, log=lambda *_: None)
+    db.conn.execute("UPDATE messages SET status = 'approved' WHERE channel = 'email'")
+    db.conn.commit()
+
+    class QuotaSMTP:
+        def __enter__(self): return self
+        def __exit__(self, *a): pass
+        def send(self, msg):
+            raise smtplib.SMTPDataError(550, b"5.4.5 Daily user sending quota exceeded")
+
+    monkeypatch.setattr(email_sender, "SMTPSender", QuotaSMTP)
+    lines = []
+    assert email_sender.send_due(db, campaign, log=lines.append, sleep=lambda s: None) == 0
+    assert {m["status"] for m in db.messages("m.channel = 'email' AND m.step = 0")} == {"approved"}
+    assert "stay queued" in lines[-1]
+
+
+def test_custom_tag_cannot_break_the_query():
+    from leadscout.sources.overpass import tag_filters
+    assert tag_filters("shop=tailor") == ['"shop"="tailor"']
+    with pytest.raises(ValueError, match="isn't valid"):
+        tag_filters('shop=tai"lor](around:1,0,0);')
+
+
+def test_backup_listing_ignores_other_databases(tmp_path):
+    from leadscout.backup import backup_db, list_backups
+    from leadscout.db import DB
+    for name in ("leads.db", "leads-old.db"):
+        DB(tmp_path / name).close()
+    backup_db(tmp_path / "leads-old.db")
+    backup_db(tmp_path / "leads.db")
+    assert [p.name.startswith("leads-2") for p in list_backups(tmp_path / "leads.db")] == [True]

@@ -99,10 +99,11 @@ def name_key(name: str, address: str | None, lat: float | None = None, lon: floa
     if address:
         place = address
     elif lat is not None and lon is not None:
-        place = f"{round(float(lat), 3)},{round(float(lon), 3)}"
+        place = f"at {float(lat):.3f} {float(lon):.3f}"
     else:
         return None
-    return re.sub(r"[^a-z0-9.,]+", "", f"{name} {place}".lower())
+    # Same normalization as earlier versions, so keys already stored in leads.db still match.
+    return re.sub(r"[^a-z0-9]+", "", f"{name} {place}".lower())
 
 
 def suppression_key(value: str) -> str:
@@ -143,6 +144,13 @@ class DB:
         for name, definition in MIGRATIONS:
             if name not in cols:
                 self.conn.execute(f"ALTER TABLE businesses ADD COLUMN {name} {definition}")
+        # Older versions stored suppressed phones as typed; normalize them so opt-outs keep matching.
+        for (value,) in self.conn.execute("SELECT value FROM suppression").fetchall():
+            key = suppression_key(value)
+            if key != value:
+                self.conn.execute("INSERT OR IGNORE INTO suppression SELECT ?, reason, created_at FROM suppression"
+                                  " WHERE value = ?", (key, value))
+                self.conn.execute("DELETE FROM suppression WHERE value = ?", (value,))
         self.conn.commit()
 
     # ---------- businesses ----------
